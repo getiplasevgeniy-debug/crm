@@ -501,7 +501,7 @@ export default function AuditScreen() {
                               color:
                                 item.source === 'transaction'
                                   ? colors.accent[700]
-                                  : colors.warning[700],
+                                  : colors.warning[600],
                             },
                           ]}
                         >

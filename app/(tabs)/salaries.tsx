@@ -195,7 +195,7 @@ export default function SalariesScreen() {
           <View style={styles.owedWrap}>
             <Text style={styles.owedLabel}>Выплачено</Text>
             <Text style={styles.paidValue}>{formatMoney(item.totalPaid)}</Text>
-            <Text style={styles.owedLabel} style={{ marginTop: 6 }}>К выплате</Text>
+            <Text style={[styles.owedLabel, { marginTop: 6 }]}>К выплате</Text>
             <Text style={[styles.owedValue, !hasDebt && { color: colors.accent[500] }]}>
               {formatMoney(item.owed)}
             </Text>
