@@ -28,7 +28,6 @@ export default function TransactionsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey());
-  const [expandedTransactionId, setExpandedTransactionId] = useState<string | null>(null);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedManager, setSelectedManager] = useState('');
@@ -156,18 +155,13 @@ export default function TransactionsScreen() {
   const totalSum = monthTransactions.reduce((s, t) => s + Number(t.amount), 0);
 
   const renderItem = ({ item }: { item: TxWithManager }) => {
-    const isExpanded = expandedTransactionId === item.id;
     const totalAmount = Number(item.amount);
     const managerPercentage = Number(item.managers?.salary_percentage || 0);
     const managerShare = totalAmount * (managerPercentage / 100);
     const companyShare = totalAmount - managerShare;
 
     return (
-      <TouchableOpacity
-        style={styles.card}
-        onPress={() => setExpandedTransactionId(isExpanded ? null : item.id)}
-        activeOpacity={0.85}
-      >
+      <View style={styles.card}>
         <View style={styles.cardRow}>
           <View style={styles.cardLeft}>
             <View style={styles.amountCircle}>
@@ -192,25 +186,20 @@ export default function TransactionsScreen() {
         </View>
         {isAdmin ? (
           <View style={styles.breakdown}>
-            <View style={styles.breakdownHeader}>
-              <Text style={styles.breakdownTitle}>Распределение суммы</Text>
-              <Text style={styles.breakdownHint}>{isExpanded ? 'Скрыть' : 'Подробнее'}</Text>
-            </View>
-            {isExpanded ? (
-              <View style={styles.breakdownRows}>
-                <View style={styles.breakdownRow}>
-                  <Text style={styles.breakdownLabel}>Менеджеру ({managerPercentage}%)</Text>
-                  <Text style={styles.managerShare}>{formatMoney(managerShare)}</Text>
-                </View>
-                <View style={styles.breakdownRow}>
-                  <Text style={styles.breakdownLabel}>Администратору ({100 - managerPercentage}%)</Text>
-                  <Text style={styles.companyShare}>{formatMoney(companyShare)}</Text>
-                </View>
+            <Text style={styles.breakdownTitle}>Распределение суммы</Text>
+            <View style={styles.breakdownRows}>
+              <View style={styles.breakdownRow}>
+                <Text style={styles.breakdownLabel}>Менеджеру ({managerPercentage}%)</Text>
+                <Text style={styles.managerShare}>{formatMoney(managerShare)}</Text>
               </View>
-            ) : null}
+              <View style={styles.breakdownRow}>
+                <Text style={styles.breakdownLabel}>Администратору ({100 - managerPercentage}%)</Text>
+                <Text style={styles.companyShare}>{formatMoney(companyShare)}</Text>
+              </View>
+            </View>
           </View>
         ) : null}
-      </TouchableOpacity>
+      </View>
     );
   };
 
@@ -364,20 +353,11 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.neutral[800],
   },
-  breakdownHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
   breakdownTitle: {
     fontFamily: 'Inter-Medium',
     fontSize: 13,
     color: colors.neutral[300],
-  },
-  breakdownHint: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    color: colors.primary[400],
+    marginBottom: 10,
   },
   breakdownRows: {
     gap: 8,
