@@ -15,7 +15,9 @@ import { Trash2, LogOut, Pencil } from 'lucide-react-native';
 import { useAuth } from '@/lib/auth';
 import { confirmDialog, alertDialog } from '@/lib/confirm';
 
-type TxWithManager = Transaction & { managers: { name: string } | null };
+type TxWithManager = Transaction & {
+  managers: { name: string; salary_percentage: number } | null;
+};
 
 export default function TransactionsScreen() {
   const { role, signOut } = useAuth();
@@ -26,6 +28,7 @@ export default function TransactionsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey());
+  const [expandedTransactionId, setExpandedTransactionId] = useState<string | null>(null);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedManager, setSelectedManager] = useState('');
@@ -40,7 +43,7 @@ export default function TransactionsScreen() {
     const [txRes, mgrRes] = await Promise.all([
       supabase
         .from('transactions')
-        .select('id, manager_id, amount, description, created_at, managers:manager_id(name)')
+        .select('id, manager_id, amount, description, created_at, managers:manager_id(name, salary_percentage)')
         .order('created_at', { ascending: false }),
       supabase.from('managers').select('id, name, phone, salary_percentage, created_at').order('name'),
     ]);
@@ -152,30 +155,64 @@ export default function TransactionsScreen() {
   );
   const totalSum = monthTransactions.reduce((s, t) => s + Number(t.amount), 0);
 
-  const renderItem = ({ item }: { item: TxWithManager }) => (
-    <View style={styles.card}>
-      <View style={styles.cardLeft}>
-        <View style={styles.amountCircle}>
-          <Text style={styles.amountText}>{formatMoney(Number(item.amount))}</Text>
+  const renderItem = ({ item }: { item: TxWithManager }) => {
+    const isExpanded = expandedTransactionId === item.id;
+    const totalAmount = Number(item.amount);
+    const managerPercentage = Number(item.managers?.salary_percentage || 0);
+    const managerShare = totalAmount * (managerPercentage / 100);
+    const companyShare = totalAmount - managerShare;
+
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        onPress={() => setExpandedTransactionId(isExpanded ? null : item.id)}
+        activeOpacity={0.85}
+      >
+        <View style={styles.cardRow}>
+          <View style={styles.cardLeft}>
+            <View style={styles.amountCircle}>
+              <Text style={styles.amountText}>{formatMoney(totalAmount)}</Text>
+            </View>
+          </View>
+          <View style={styles.cardBody}>
+            <Text style={styles.managerName}>{item.managers?.name || '—'}</Text>
+            {item.description ? <Text style={styles.desc}>{item.description}</Text> : null}
+            <Text style={styles.date}>{formatDate(item.created_at)}</Text>
+          </View>
+          {isAdmin ? (
+            <View style={styles.cardActions}>
+              <TouchableOpacity onPress={() => openEdit(item)} hitSlop={10} style={styles.editBtn}>
+                <Pencil size={14} color={colors.primary[400]} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleDelete(item)} hitSlop={10} style={styles.delBtn}>
+                <Trash2 size={16} color={colors.error[400]} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
-      </View>
-      <View style={styles.cardBody}>
-        <Text style={styles.managerName}>{item.managers?.name || '—'}</Text>
-        {item.description ? <Text style={styles.desc}>{item.description}</Text> : null}
-        <Text style={styles.date}>{formatDate(item.created_at)}</Text>
-      </View>
-      {isAdmin ? (
-        <View style={styles.cardActions}>
-          <TouchableOpacity onPress={() => openEdit(item)} hitSlop={10} style={styles.editBtn}>
-            <Pencil size={14} color={colors.primary[400]} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => handleDelete(item)} hitSlop={10} style={styles.delBtn}>
-            <Trash2 size={16} color={colors.error[400]} />
-          </TouchableOpacity>
-        </View>
-      ) : null}
-    </View>
-  );
+        {isAdmin ? (
+          <View style={styles.breakdown}>
+            <View style={styles.breakdownHeader}>
+              <Text style={styles.breakdownTitle}>Распределение суммы</Text>
+              <Text style={styles.breakdownHint}>{isExpanded ? 'Скрыть' : 'Подробнее'}</Text>
+            </View>
+            {isExpanded ? (
+              <View style={styles.breakdownRows}>
+                <View style={styles.breakdownRow}>
+                  <Text style={styles.breakdownLabel}>Менеджеру ({managerPercentage}%)</Text>
+                  <Text style={styles.managerShare}>{formatMoney(managerShare)}</Text>
+                </View>
+                <View style={styles.breakdownRow}>
+                  <Text style={styles.breakdownLabel}>Администратору ({100 - managerPercentage}%)</Text>
+                  <Text style={styles.companyShare}>{formatMoney(companyShare)}</Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -274,14 +311,16 @@ const styles = StyleSheet.create({
     paddingTop: 4,
   },
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: colors.neutral[900],
     borderRadius: 16,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
     borderColor: colors.neutral[800],
+  },
+  cardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   cardLeft: {
     marginRight: 14,
@@ -318,6 +357,51 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.neutral[500],
     marginTop: 4,
+  },
+  breakdown: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.neutral[800],
+  },
+  breakdownHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  breakdownTitle: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: colors.neutral[300],
+  },
+  breakdownHint: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: colors.primary[400],
+  },
+  breakdownRows: {
+    gap: 8,
+    marginTop: 12,
+  },
+  breakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  breakdownLabel: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: colors.neutral[400],
+  },
+  managerShare: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: colors.accent[400],
+  },
+  companyShare: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: colors.primary[400],
   },
   cardActions: {
     flexDirection: 'row',
