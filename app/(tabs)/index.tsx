@@ -151,70 +151,70 @@ export default function ManagersScreen() {
 
     setSaving(true);
 
-    if (editingManager) {
-      const { error: err } = await supabase
-        .from('managers')
-        .update({
-          name: name.trim(),
-          phone: phone.trim() || null,
-          salary_percentage: pct,
-          external_agent_id: selectedAgentId,
-        })
-        .eq('id', editingManager.id);
-      if (err) {
-        Alert.alert('Ошибка', err.message);
-        setSaving(false);
-        return;
-      }
-    } else {
-      if (!email.trim() || !password.trim()) {
-        Alert.alert('Ошибка', 'Введите email и пароль для входа менеджера');
-        setSaving(false);
-        return;
-      }
-      if (password.length < 6) {
-        Alert.alert('Ошибка', 'Пароль должен быть не менее 6 символов');
-        setSaving(false);
-        return;
-      }
+    try {
+      if (editingManager) {
+        const { error: err } = await supabase
+          .from('managers')
+          .update({
+            name: name.trim(),
+            phone: phone.trim() || null,
+            salary_percentage: pct,
+            external_agent_id: selectedAgentId,
+          })
+          .eq('id', editingManager.id);
+        if (err) {
+          Alert.alert('Ошибка', err.message);
+          return;
+        }
+      } else {
+        if (!email.trim() || !password.trim()) {
+          Alert.alert('Ошибка', 'Введите email и пароль для входа менеджера');
+          return;
+        }
+        if (password.length < 6) {
+          Alert.alert('Ошибка', 'Пароль должен быть не менее 6 символов');
+          return;
+        }
 
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData.session?.access_token;
+        const { data: sessionData } = await supabase.auth.getSession();
+        const accessToken = sessionData.session?.access_token;
 
-      if (!accessToken) {
-        Alert.alert('Ошибка', 'Нет авторизации');
-        setSaving(false);
-        return;
+        if (!accessToken) {
+          Alert.alert('Ошибка', 'Нет авторизации');
+          return;
+        }
+
+        const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+        const response = await fetch(`${supabaseUrl}/functions/v1/create-manager`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            name: name.trim(),
+            phone: phone.trim() || null,
+            salary_percentage: pct,
+            email: email.trim(),
+            password,
+            external_agent_id: selectedAgentId,
+          }),
+        });
+
+        const result = await response.json().catch(() => null);
+
+        if (!response.ok || !result) {
+          Alert.alert('Ошибка', result?.error || `Не удалось создать менеджера (код ${response.status})`);
+          return;
+        }
       }
-
-      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-      const response = await fetch(`${supabaseUrl}/functions/v1/create-manager`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          name: name.trim(),
-          phone: phone.trim() || null,
-          salary_percentage: pct,
-          email: email.trim(),
-          password,
-          external_agent_id: selectedAgentId,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        Alert.alert('Ошибка', result.error || 'Не удалось создать менеджера');
-        setSaving(false);
-        return;
-      }
+      setModalVisible(false);
+      fetchManagers();
+    } catch (err) {
+      Alert.alert('Ошибка', err instanceof Error ? err.message : 'Произошла ошибка при создании менеджера');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    setModalVisible(false);
-    fetchManagers();
   };
 
   const handleDelete = (m: Manager) => {
