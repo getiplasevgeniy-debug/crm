@@ -147,7 +147,7 @@ async function analytics(body: Record<string, unknown>) {
   const to = typeof body.to === 'string' ? body.to : '';
   const requestedFrom = from && !Number.isNaN(Date.parse(from)) ? from : trackingStart;
   const effectiveFrom = new Date(requestedFrom) < new Date(trackingStart) ? trackingStart : requestedFrom;
-  let contactsPath = '/rest/v1/contacts?select=id,agent_id,status,created_at,notes&limit=10000&order=created_at.desc';
+  let contactsPath = '/rest/v1/contacts?select=id,agent_id,status,created_at&limit=10000&order=created_at.desc';
   contactsPath += `&created_at=gte.${encodeURIComponent(effectiveFrom)}`;
   if (to && !Number.isNaN(Date.parse(to))) contactsPath += `&created_at=lt.${encodeURIComponent(to)}`;
   const [contacts, agents, history] = await Promise.all([
@@ -167,10 +167,11 @@ async function analytics(body: Record<string, unknown>) {
   const summaries = new Map<string, ReturnType<typeof makeSummary>>();
   const totals = { total: 0, statuses: {} as Record<string, number> };
   for (const contact of contacts || []) {
-    if (typeof contact.notes !== 'string' || !contact.notes.trim() || typeof contact.created_at !== 'string') continue;
-    const statuses = historyByContact.get(contact.id) || (typeof contact.status === 'string' ? [contact.status] : []);
+    if (typeof contact.created_at !== 'string') continue;
+    const agentId = typeof contact.agent_id === 'string' && contact.agent_id ? contact.agent_id : 'unassigned';
+    const currentStatus = typeof contact.status === 'string' ? contact.status : '';
+    const statuses = historyByContact.get(contact.id) || (currentStatus ? [currentStatus] : []);
     if (statuses.includes('Нет ответа')) continue;
-    const agentId = contact.agent_id || 'unassigned';
     const summary = summaries.get(agentId) || makeSummary(agentId);
     summary.total += 1;
     totals.total += 1;
