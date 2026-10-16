@@ -72,6 +72,13 @@ export async function fetchExternalAgents() {
   return result as ExternalAgent[];
 }
 
+export async function fetchMyAnalytics(): Promise<ExternalAnalyticsResponse> {
+  const result = await callExternalCrm({ action: 'my_analytics' });
+  if (!result || typeof result !== 'object' || !Array.isArray(result.by_agent))
+    throw new Error('Внешняя CRM вернула некорректную аналитику');
+  return result as ExternalAnalyticsResponse;
+}
+
 export async function fetchExternalAnalytics(from?: string, to?: string): Promise<ExternalAnalyticsResponse> {
   const payload: Record<string, unknown> = { action: 'analytics' };
   if (from) payload.from = from;

@@ -56,17 +56,13 @@ export default function TabLayout() {
       ) : (
         <Tabs.Screen name="leads" options={{ href: null }} />
       )}
-      {isAdmin ? (
-        <Tabs.Screen
-          name="analytics"
-          options={{
-            title: 'Лиды',
-            tabBarIcon: ({ size, color }) => <LineChart size={size} color={color} />,
-          }}
-        />
-      ) : (
-        <Tabs.Screen name="analytics" options={{ href: null }} />
-      )}
+      <Tabs.Screen
+        name="analytics"
+        options={{
+          title: 'Аналитика',
+          tabBarIcon: ({ size, color }) => <LineChart size={size} color={color} />,
+        }}
+      />
       <Tabs.Screen
         name="transactions"
         options={{

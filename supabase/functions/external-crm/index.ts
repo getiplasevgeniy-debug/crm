@@ -16,18 +16,26 @@ function json(data: unknown, status = 200) {
   });
 }
 
-function isAdmin(request: Request) {
+type AuthInfo = { authenticated: boolean; isAdmin: boolean; userId: string | null };
+
+function getAuthInfo(request: Request): AuthInfo {
   const authorization = request.headers.get('Authorization');
   const token = authorization?.replace(/^Bearer\s+/i, '');
-  if (!token) return false;
+  if (!token) return { authenticated: false, isAdmin: false, userId: null };
   const payload = token.split('.')[1];
-  if (!payload) return false;
+  if (!payload) return { authenticated: false, isAdmin: false, userId: null };
   try {
     const claims = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
-    return claims?.role === 'authenticated' && claims?.user_metadata?.role !== 'admin' && claims?.app_metadata?.role === 'admin';
+    const authenticated = claims?.role === 'authenticated' && typeof claims?.sub === 'string';
+    const admin = authenticated && claims?.app_metadata?.role === 'admin';
+    return { authenticated, isAdmin: admin, userId: claims?.sub ?? null };
   } catch {
-    return false;
+    return { authenticated: false, isAdmin: false, userId: null };
   }
+}
+
+function isAdmin(request: Request) {
+  return getAuthInfo(request).isAdmin;
 }
 
 function requireConfiguration() {
@@ -226,18 +234,96 @@ async function assignContact(body: Record<string, unknown>) {
   return { updated: rows?.[0] ?? null };
 }
 
+async function myAnalytics(authInfo: AuthInfo) {
+  requireConfiguration();
+  if (!authInfo.userId) throw new Error('Not authenticated');
+
+  // Find manager's external_agent_id
+  const mgrRes = await fetch(`${currentUrl}/rest/v1/managers?select=external_agent_id&auth_user_id=eq.${encodeURIComponent(authInfo.userId)}&limit=1`, {
+    headers: {
+      apikey: currentServiceRoleKey!,
+      Authorization: `Bearer ${currentServiceRoleKey!}`,
+    },
+  });
+  if (!mgrRes.ok) throw new Error('Failed to fetch manager');
+  const mgrData = await mgrRes.json();
+  const externalAgentId = mgrData?.[0]?.external_agent_id;
+  if (!externalAgentId) throw new Error('Agent not linked to external CRM');
+
+  // Fetch only this agent's contacts from today
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const effectiveFrom = today.toISOString();
+  let contactsPath = `/rest/v1/contacts?select=id,agent_id,status,created_at&limit=10000&order=created_at.desc`;
+  contactsPath += `&created_at=gte.${encodeURIComponent(effectiveFrom)}`;
+  contactsPath += `&agent_id=eq.${encodeURIComponent(externalAgentId)}`;
+
+  const [contacts, agents, history] = await Promise.all([
+    fetchAll(contactsPath),
+    fetchAll('/rest/v1/agents?select=id,name&status=eq.active&limit=1000'),
+    fetchStatusHistory(),
+  ]);
+  const agentName = (agents || []).find((a: { id: string }) => a.id === externalAgentId)?.name || 'Моя статистика';
+
+  const historyByContact = new Map<string, string[]>();
+  for (const event of history || []) {
+    if (typeof event.contact_id !== 'string' || typeof event.status !== 'string') continue;
+    const statuses = historyByContact.get(event.contact_id) || [];
+    if (!statuses.includes(event.status)) statuses.push(event.status);
+    historyByContact.set(event.contact_id, statuses);
+  }
+
+  const summary = { agent_id: externalAgentId, agent_name: agentName, total: 0, statuses: {} as Record<string, number> };
+  for (const contact of contacts || []) {
+    if (typeof contact.created_at !== 'string') continue;
+    const currentStatus = typeof contact.status === 'string' ? contact.status : '';
+    const statuses = historyByContact.get(contact.id) || (currentStatus ? [currentStatus] : []);
+    if (statuses.includes('Нет ответа')) continue;
+    summary.total += 1;
+    for (const status of statuses) {
+      summary.statuses[status] = (summary.statuses[status] || 0) + 1;
+    }
+  }
+
+  const totals = { total: summary.total, statuses: { ...summary.statuses } };
+  const addConversions = (s: { total: number; statuses: Record<string, number> }) => ({
+    ...s,
+    in_work: s.statuses['В работе'] || 0,
+    deposits: s.statuses['Депозит'] || 0,
+    invalid: s.statuses['Не валид'] || 0,
+    work_conversion: s.total ? (s.statuses['В работе'] || 0) / s.total : 0,
+    deposit_conversion: s.total ? (s.statuses['Депозит'] || 0) / s.total : 0,
+    invalid_conversion: s.total ? (s.statuses['Не валид'] || 0) / s.total : 0,
+  });
+  return { totals: addConversions(totals), by_agent: [addConversions(summary)] };
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders });
 
   try {
-    if (!isAdmin(request)) return json({ error: 'Not authorized' }, 403);
+    const authInfo = getAuthInfo(request);
+    if (!authInfo.authenticated) return json({ error: 'Not authorized' }, 403);
     const body = await request.json();
     let result;
-    if (body.action === 'analytics') result = await analytics(body);
-    else if (body.action === 'list_agents') result = await listAgents();
-    else if (body.action === 'find_contact') result = await findContact(body);
-    else if (body.action === 'assign_contact') result = await assignContact(body);
-    else result = await syncLead(body);
+    if (body.action === 'my_analytics') {
+      result = await myAnalytics(authInfo);
+    } else if (body.action === 'analytics') {
+      if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
+      result = await analytics(body);
+    } else if (body.action === 'list_agents') {
+      if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
+      result = await listAgents();
+    } else if (body.action === 'find_contact') {
+      if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
+      result = await findContact(body);
+    } else if (body.action === 'assign_contact') {
+      if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
+      result = await assignContact(body);
+    } else {
+      if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
+      result = await syncLead(body);
+    }
     return json(result);
   } catch (error) {
     console.error('external CRM request failed', error);
