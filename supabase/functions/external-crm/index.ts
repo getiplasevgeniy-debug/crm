@@ -109,6 +109,21 @@ async function fetchAll(path: string) {
   return response.json();
 }
 
+async function fetchStatusHistory() {
+  const paths = [
+    '/rest/v1/contact_status_history?select=contact_id,status,created_at&order=created_at.asc&limit=100000',
+    '/rest/v1/status_history?select=contact_id,status,created_at&order=created_at.asc&limit=100000',
+  ];
+  for (const path of paths) {
+    const response = await fetch(`${targetUrl}${path}`, { headers: targetHeaders() });
+    if (response.ok) {
+      const history = await response.json();
+      if (Array.isArray(history)) return history;
+    }
+  }
+  throw new Error('Target CRM status history unavailable');
+}
+
 async function listAgents() {
   requireConfiguration();
   const agents = await fetchAll('/rest/v1/agents?select=id,name,email,role,status&order=name.asc&limit=1000');
@@ -122,58 +137,54 @@ async function listAgents() {
 }
 
 async function analytics(body: Record<string, unknown>) {
+  const trackingStart = '2026-10-01T00:00:00.000Z';
   requireConfiguration();
   const from = typeof body.from === 'string' ? body.from : '';
   const to = typeof body.to === 'string' ? body.to : '';
-  let contactsPath = '/rest/v1/contacts?select=id,agent_id,status,created_at&limit=10000&order=created_at.desc';
-  if (from && !Number.isNaN(Date.parse(from))) {
-    contactsPath += `&created_at=gte.${encodeURIComponent(from)}`;
-  }
-  if (to && !Number.isNaN(Date.parse(to))) {
-    contactsPath += `&created_at=lt.${encodeURIComponent(to)}`;
-  }
-  const [contacts, agents] = await Promise.all([
+  const requestedFrom = from && !Number.isNaN(Date.parse(from)) ? from : trackingStart;
+  const effectiveFrom = new Date(requestedFrom) < new Date(trackingStart) ? trackingStart : requestedFrom;
+  let contactsPath = '/rest/v1/contacts?select=id,agent_id,status,created_at,notes&limit=10000&order=created_at.desc';
+  contactsPath += `&created_at=gte.${encodeURIComponent(effectiveFrom)}`;
+  if (to && !Number.isNaN(Date.parse(to))) contactsPath += `&created_at=lt.${encodeURIComponent(to)}`;
+  const [contacts, agents, history] = await Promise.all([
     fetchAll(contactsPath),
     fetchAll('/rest/v1/agents?select=id,name&status=eq.active&limit=1000'),
+    fetchStatusHistory(),
   ]);
   const agentNames = new Map<string, string>((agents || []).map((agent: { id: string; name: string }) => [agent.id, agent.name]));
-  const summaries = new Map<string, { agent_id: string; agent_name: string; total: number; in_work: number; deposits: number; invalid: number }>();
-  let totals = { total: 0, in_work: 0, deposits: 0, invalid: 0 };
-
+  const historyByContact = new Map<string, string[]>();
+  for (const event of history || []) {
+    if (typeof event.contact_id !== 'string' || typeof event.status !== 'string') continue;
+    const statuses = historyByContact.get(event.contact_id) || [];
+    if (!statuses.includes(event.status)) statuses.push(event.status);
+    historyByContact.set(event.contact_id, statuses);
+  }
+  const makeSummary = (agentId: string) => ({ agent_id: agentId, agent_name: agentNames.get(agentId) || 'Без агента', total: 0, statuses: {} as Record<string, number> });
+  const summaries = new Map<string, ReturnType<typeof makeSummary>>();
+  const totals = { total: 0, statuses: {} as Record<string, number> };
   for (const contact of contacts || []) {
+    if (typeof contact.notes !== 'string' || !contact.notes.trim() || typeof contact.created_at !== 'string') continue;
     const agentId = contact.agent_id || 'unassigned';
-    const summary = summaries.get(agentId) || {
-      agent_id: agentId,
-      agent_name: agentNames.get(agentId) || 'Без агента',
-      total: 0,
-      in_work: 0,
-      deposits: 0,
-      invalid: 0,
-    };
+    const summary = summaries.get(agentId) || makeSummary(agentId);
+    const statuses = historyByContact.get(contact.id) || (typeof contact.status === 'string' ? [contact.status] : []);
     summary.total += 1;
     totals.total += 1;
-    if (contact.status === 'В работе') { summary.in_work += 1; totals.in_work += 1; }
-    if (contact.status === 'Депозит') { summary.deposits += 1; totals.deposits += 1; }
-    if (contact.status === 'Не валид') { summary.invalid += 1; totals.invalid += 1; }
+    for (const status of statuses) {
+      summary.statuses[status] = (summary.statuses[status] || 0) + 1;
+      totals.statuses[status] = (totals.statuses[status] || 0) + 1;
+    }
     summaries.set(agentId, summary);
   }
-
-  const byAgent = Array.from(summaries.values()).map((summary) => ({
+  const addConversions = (summary: { total: number; statuses: Record<string, number> }) => ({
     ...summary,
-    work_conversion: summary.total ? summary.in_work / summary.total : 0,
-    deposit_conversion: summary.total ? summary.deposits / summary.total : 0,
-    invalid_conversion: summary.total ? summary.invalid / summary.total : 0,
-  })).sort((a, b) => b.total - a.total);
-
-  return {
-    totals: {
-      ...totals,
-      work_conversion: totals.total ? totals.in_work / totals.total : 0,
-      deposit_conversion: totals.total ? totals.deposits / totals.total : 0,
-      invalid_conversion: totals.total ? totals.invalid / totals.total : 0,
-    },
-    by_agent: byAgent,
-  };
+    in_work: summary.statuses['В работе'] || 0,
+    deposits: summary.statuses['Депозит'] || 0,
+    invalid: summary.statuses['Не валид'] || 0,
+    work_conversion: summary.total ? (summary.statuses['В работе'] || 0) / summary.total : 0,
+    deposit_conversion: summary.total ? (summary.statuses['Депозит'] || 0) / summary.total : 0,
+    invalid_conversion: summary.total ? (summary.statuses['Не валид'] || 0) / summary.total : 0,
+  });
+  return { totals: addConversions(totals), by_agent: Array.from(summaries.values()).map(addConversions).sort((a, b) => b.total - a.total) };
 }
 
 Deno.serve(async (request) => {

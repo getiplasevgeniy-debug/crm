@@ -11,6 +11,7 @@ export type ExternalAnalyticsRow = {
   agent_id: string;
   agent_name: string;
   total: number;
+  statuses: Record<string, number>;
   in_work: number;
   deposits: number;
   invalid: number;
@@ -21,6 +22,7 @@ export type ExternalAnalyticsRow = {
 
 export type ExternalAnalyticsTotals = {
   total: number;
+  statuses: Record<string, number>;
   in_work: number;
   deposits: number;
   invalid: number;

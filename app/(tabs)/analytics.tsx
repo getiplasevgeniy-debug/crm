@@ -7,7 +7,7 @@ import { ScreenHeader } from '@/components/ScreenHeader';
 import { fetchExternalAnalytics, ExternalAnalyticsResponse } from '@/lib/externalCrm';
 import { useAuth } from '@/lib/auth';
 import { colors } from '@/lib/theme';
-import { getMonthRange } from '@/lib/format';
+import { currentMonthKey, getMonthRange } from '@/lib/format';
 
 function percent(value: number) {
   return `${Math.round(value * 100)}%`;
@@ -15,7 +15,7 @@ function percent(value: number) {
 
 export default function AnalyticsScreen() {
   const { role, signOut } = useAuth();
-  const [monthKey, setMonthKey] = useState('2026-09');
+  const [monthKey, setMonthKey] = useState(currentMonthKey());
   const [data, setData] = useState<ExternalAnalyticsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -74,7 +74,7 @@ export default function AnalyticsScreen() {
 
         <View style={styles.definitionCard}>
           <BarChart3 size={20} color={colors.primary[300]} />
-          <Text style={styles.definitionText}>Взятие в работу = статус «В работе». Конверсия депозитов считается от взятых в работу.</Text>
+          <Text style={styles.definitionText}>В статистику попадают клиенты с комментарием и датой добавления с 1 октября 2026 года. Статусы считаются по истории изменений, проценты — от всех клиентов агента.</Text>
         </View>
 
         {totals && !error ? (
@@ -121,6 +121,14 @@ export default function AnalyticsScreen() {
               <Metric label="В работе" value={row.in_work} conversion={percent(row.work_conversion)} convLabel="от всех" color={colors.primary[300]} />
               <Metric label="Депозит" value={row.deposits} conversion={percent(row.deposit_conversion)} convLabel="от всех" color={colors.accent[400]} />
               <Metric label="Не валид" value={row.invalid} conversion={percent(row.invalid_conversion)} convLabel="от всех" color={colors.error[400]} />
+            </View>
+            <View style={styles.statusList}>
+              {Object.entries(row.statuses).filter(([status]) => !['В работе', 'Депозит', 'Не валид'].includes(status)).map(([status, count]) => (
+                <View style={styles.statusLine} key={status}>
+                  <Text style={styles.statusName}>{status}</Text>
+                  <Text style={styles.statusCount}>{count} ({percent(row.total ? count / row.total : 0)})</Text>
+                </View>
+              ))}
             </View>
           </View>
         ))}
@@ -179,6 +187,10 @@ const styles = StyleSheet.create({
   metricLabel: { fontFamily: 'Inter-Regular', fontSize: 11, color: colors.neutral[400] },
   metricValue: { fontFamily: 'Inter-Bold', fontSize: 22, marginTop: 5 },
   metricConversion: { fontFamily: 'Inter-Regular', fontSize: 10, color: colors.neutral[400], marginTop: 3 },
+  statusList: { marginTop: 12, gap: 6 },
+  statusLine: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.neutral[700] },
+  statusName: { fontFamily: 'Inter-Regular', fontSize: 12, color: colors.neutral[300] },
+  statusCount: { fontFamily: 'Inter-SemiBold', fontSize: 12, color: colors.neutral[100] },
   empty: { fontFamily: 'Inter-Regular', fontSize: 14, color: colors.neutral[400], textAlign: 'center', marginTop: 24 },
   loader: { marginTop: 20 },
 });
