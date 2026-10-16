@@ -185,11 +185,13 @@ export default function ManagersScreen() {
         }
 
         const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+        const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
         const response = await fetch(`${supabaseUrl}/functions/v1/create-manager`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${accessToken}`,
+            apikey: supabaseAnonKey,
           },
           body: JSON.stringify({
             name: name.trim(),

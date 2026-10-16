@@ -46,6 +46,7 @@ async function callExternalCrm(body: Record<string, unknown>) {
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
+      apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
     },
     body: JSON.stringify(body),
   });
