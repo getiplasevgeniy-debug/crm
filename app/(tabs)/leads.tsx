@@ -1,45 +1,43 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { CheckCircle2, LogOut, Send, UserPlus } from 'lucide-react-native';
+import { CheckCircle2, LogOut, UserPlus } from 'lucide-react-native';
 import { ActionButton } from '@/components/ActionButton';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { LabeledInput } from '@/components/LabeledInput';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useAuth } from '@/lib/auth';
-import { syncLead } from '@/lib/externalCrm';
+import { fetchExternalAgents, syncLead, ExternalAgent } from '@/lib/externalCrm';
 import { colors } from '@/lib/theme';
-import { supabase, Manager } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 export default function LeadsScreen() {
   const { role, signOut } = useAuth();
-  const [managers, setManagers] = useState<Manager[]>([]);
+  const [agents, setAgents] = useState<ExternalAgent[]>([]);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [lostWith, setLostWith] = useState('');
   const [applicationDate, setApplicationDate] = useState(new Date().toISOString().slice(0, 10));
-  const [selectedManagerId, setSelectedManagerId] = useState('');
+  const [selectedAgentId, setSelectedAgentId] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const fetchManagers = useCallback(async () => {
-    const { data, error: fetchError } = await supabase
-      .from('managers')
-      .select('id, name, phone, salary_percentage, created_at, email, auth_user_id, external_agent_id')
-      .order('name');
-    if (fetchError) {
-      setError('Не удалось загрузить список агентов.');
-    } else {
-      setManagers((data || []) as Manager[]);
+  const loadAgents = useCallback(async () => {
+    setError(null);
+    try {
+      setAgents(await fetchExternalAgents());
+    } catch {
+      setError('Не удалось загрузить агентов из второй CRM. Проверьте подключение.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => {
-    fetchManagers();
-  }, [fetchManagers]);
+    loadAgents();
+  }, [loadAgents]);
 
   const resetForm = () => {
     setName('');
@@ -47,19 +45,19 @@ export default function LeadsScreen() {
     setEmail('');
     setLostWith('');
     setApplicationDate(new Date().toISOString().slice(0, 10));
-    setSelectedManagerId('');
+    setSelectedAgentId('');
   };
 
   const handleSubmit = async () => {
     setError(null);
     setSuccess(null);
-    const manager = managers.find((item) => item.id === selectedManagerId);
+    const agent = agents.find((item) => item.id === selectedAgentId);
     if (!name.trim()) {
       setError('Введите имя и фамилию клиента.');
       return;
     }
-    if (!manager?.external_agent_id) {
-      setError('Выберите агента с заполненным ID во второй CRM.');
+    if (!agent) {
+      setError('Выберите агента из списка.');
       return;
     }
     if (!applicationDate || Number.isNaN(Date.parse(applicationDate))) {
@@ -77,8 +75,7 @@ export default function LeadsScreen() {
         phone: phone.trim() || null,
         lost_with: lostWith.trim() || null,
         application_date: applicationDateIso,
-        assigned_manager_id: manager.id,
-        external_agent_id: manager.external_agent_id,
+        external_agent_id: agent.id,
       })
       .select('id')
       .maybeSingle();
@@ -97,9 +94,9 @@ export default function LeadsScreen() {
         phone: phone.trim() || null,
         lost_with: lostWith.trim() || null,
         application_date: applicationDateIso,
-        external_agent_id: manager.external_agent_id,
+        external_agent_id: agent.id,
       });
-      setSuccess(`Клиент отправлен в CRM и назначен агенту ${manager.name}.`);
+      setSuccess(`Клиент отправлен в CRM и назначен агенту ${agent.name}.`);
       resetForm();
     } catch (syncError) {
       await supabase
@@ -140,7 +137,7 @@ export default function LeadsScreen() {
           <UserPlus size={22} color={colors.primary[300]} />
           <View style={styles.introCopy}>
             <Text style={styles.introTitle}>Передать нового клиента</Text>
-            <Text style={styles.introText}>Заполните данные и назначьте агента из подключённой CRM.</Text>
+            <Text style={styles.introText}>Заполните данные и выберите агента из второй CRM. Клиент сразу появится в его списке.</Text>
           </View>
         </View>
         <LabeledInput label="Имя и фамилия *" value={name} onChangeText={setName} placeholder="Иван Иванов" />
@@ -150,26 +147,29 @@ export default function LeadsScreen() {
         <LabeledInput label="Дата заявки *" value={applicationDate} onChangeText={setApplicationDate} datePicker />
 
         <Text style={styles.label}>Назначить агента *</Text>
-        <View style={styles.agentList}>
-          {managers.map((manager) => {
-            const selected = selectedManagerId === manager.id;
-            const unavailable = !manager.external_agent_id;
-            return (
-              <TouchableOpacity
-                key={manager.id}
-                style={[styles.agentOption, selected && styles.agentOptionSelected, unavailable && styles.agentOptionDisabled]}
-                onPress={() => !unavailable && setSelectedManagerId(manager.id)}
-                activeOpacity={0.8}
-              >
-                <View style={styles.agentText}>
-                  <Text style={styles.agentName}>{manager.name}</Text>
-                  <Text style={styles.agentMeta}>{unavailable ? 'Не подключён к внешней CRM' : 'Готов принимать клиентов'}</Text>
-                </View>
-                {selected ? <CheckCircle2 size={20} color={colors.primary[300]} /> : null}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        {agents.length === 0 && !loading ? (
+          <Text style={styles.empty}>Нет активных агентов во второй CRM.</Text>
+        ) : (
+          <View style={styles.agentList}>
+            {agents.map((agent) => {
+              const selected = selectedAgentId === agent.id;
+              return (
+                <TouchableOpacity
+                  key={agent.id}
+                  style={[styles.agentOption, selected && styles.agentOptionSelected]}
+                  onPress={() => setSelectedAgentId(agent.id)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.agentText}>
+                    <Text style={styles.agentName}>{agent.name}</Text>
+                    {agent.email ? <Text style={styles.agentMeta}>{agent.email}</Text> : null}
+                  </View>
+                  {selected ? <CheckCircle2 size={20} color={colors.primary[300]} /> : null}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
         <ActionButton label="Отправить клиента" onPress={handleSubmit} loading={saving} />
         <View style={styles.bottomSpace} />
       </ScrollView>
@@ -189,10 +189,10 @@ const styles = StyleSheet.create({
   agentList: { gap: 8, marginBottom: 20 },
   agentOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 12, backgroundColor: colors.neutral[900], borderWidth: 1, borderColor: colors.neutral[700] },
   agentOptionSelected: { borderColor: colors.primary[400], backgroundColor: colors.primary[900] },
-  agentOptionDisabled: { opacity: 0.5 },
   agentText: { flex: 1 },
   agentName: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: colors.neutral[0] },
   agentMeta: { fontFamily: 'Inter-Regular', fontSize: 12, color: colors.neutral[400], marginTop: 3 },
+  empty: { fontFamily: 'Inter-Regular', fontSize: 14, color: colors.neutral[400], marginBottom: 20 },
   successBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, marginBottom: 12, borderRadius: 12, backgroundColor: colors.accent[700] },
   successText: { flex: 1, fontFamily: 'Inter-Medium', fontSize: 13, color: colors.neutral[0] },
   bottomSpace: { height: 24 },

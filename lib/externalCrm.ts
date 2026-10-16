@@ -1,5 +1,12 @@
 import { supabase } from '@/lib/supabase';
 
+export type ExternalAgent = {
+  id: string;
+  name: string;
+  email: string | null;
+  role: string | null;
+};
+
 export type ExternalAnalyticsRow = {
   agent_id: string;
   agent_name: string;
@@ -40,6 +47,12 @@ export function syncLead(input: {
   external_agent_id: string;
 }) {
   return callExternalCrm({ action: 'sync_lead', ...input });
+}
+
+export async function fetchExternalAgents() {
+  const result = await callExternalCrm({ action: 'list_agents' });
+  if (!Array.isArray(result)) throw new Error('Внешняя CRM вернула некорректный список агентов');
+  return result as ExternalAgent[];
 }
 
 export async function fetchExternalAnalytics() {

@@ -109,6 +109,18 @@ async function fetchAll(path: string) {
   return response.json();
 }
 
+async function listAgents() {
+  requireConfiguration();
+  const agents = await fetchAll('/rest/v1/agents?select=id,name,email,role,status&order=name.asc&limit=1000');
+  if (!Array.isArray(agents)) throw new Error('Target CRM returned invalid agents');
+  return agents.filter((a: { status?: string }) => a.status === 'active' || !a.status).map((a: { id: string; name: string; email?: string; role?: string }) => ({
+    id: a.id,
+    name: a.name,
+    email: a.email ?? null,
+    role: a.role ?? null,
+  }));
+}
+
 async function analytics() {
   requireConfiguration();
   const [contacts, agents] = await Promise.all([
@@ -149,7 +161,7 @@ Deno.serve(async (request) => {
   try {
     if (!isAdmin(request)) return json({ error: 'Not authorized' }, 403);
     const body = await request.json();
-    const result = body.action === 'analytics' ? await analytics() : await syncLead(body);
+    const result = body.action === 'analytics' ? await analytics() : body.action === 'list_agents' ? await listAgents() : await syncLead(body);
     return json(result);
   } catch (error) {
     console.error('external CRM request failed', error);
