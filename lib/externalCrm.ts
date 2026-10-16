@@ -50,7 +50,12 @@ async function callExternalCrm(body: Record<string, unknown>) {
     body: JSON.stringify(body),
   });
   const result = await response.json().catch(() => null);
-  if (!response.ok || !result) throw new Error(result?.error || 'Не удалось связаться с внешней CRM');
+  if (!response.ok || !result) {
+    const message = result?.error || 'Не удалось связаться с внешней CRM';
+    throw new Error(message === 'Agent not linked to external CRM'
+      ? 'Ваш профиль ещё не привязан к агенту во внешней CRM. Обратитесь к администратору.'
+      : message);
+  }
   return result;
 }
 

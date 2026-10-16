@@ -63,23 +63,42 @@ async function getAppSetting(key: string): Promise<string | null> {
 async function notifyAgentNewLead(agentId: string, leadName: string) {
   const vapidPublicKey = await getAppSetting('vapid_public_key');
   const vapidPrivateKey = await getAppSetting('vapid_private_key');
-  if (!vapidPublicKey || !vapidPrivateKey) return;
+  if (!vapidPublicKey || !vapidPrivateKey) {
+    console.error('push: VAPID keys not found in app_settings');
+    return;
+  }
 
-  const managerResponse = await fetch(`${currentUrl}/rest/v1/managers?select=auth_user_id&external_agent_id=eq.${encodeURIComponent(agentId)}&auth_user_id=not.is.null`, {
+  const managerResponse = await fetch(`${currentUrl}/rest/v1/managers?select=auth_user_id,external_agent_id&auth_user_id=not.is.null`, {
     headers: { apikey: currentServiceRoleKey!, Authorization: `Bearer ${currentServiceRoleKey!}` },
   });
-  if (!managerResponse.ok) return;
+  if (!managerResponse.ok) {
+    console.error('push: failed to fetch managers', managerResponse.status);
+    return;
+  }
   const managers = await managerResponse.json();
-  const userIds = (managers || [])
-    .map((manager: { auth_user_id?: string }) => manager.auth_user_id)
+  const matchedManagers = (managers || []).filter((m: { external_agent_id?: string | null; auth_user_id?: string }) =>
+    m.external_agent_id && m.auth_user_id && m.external_agent_id === agentId,
+  );
+  const userIds = matchedManagers
+    .map((m: { auth_user_id?: string }) => m.auth_user_id)
     .filter((userId: unknown): userId is string => typeof userId === 'string');
-  if (userIds.length === 0) return;
+  if (userIds.length === 0) {
+    console.error('push: no manager linked to external_agent_id', agentId);
+    return;
+  }
 
   const subscriptionResponse = await fetch(`${currentUrl}/rest/v1/push_subscriptions?select=id,endpoint,p256dh,auth&user_id=in.(${userIds.map(encodeURIComponent).join(',')})`, {
     headers: { apikey: currentServiceRoleKey!, Authorization: `Bearer ${currentServiceRoleKey!}` },
   });
-  if (!subscriptionResponse.ok) return;
+  if (!subscriptionResponse.ok) {
+    console.error('push: failed to fetch subscriptions', subscriptionResponse.status);
+    return;
+  }
   const subscriptions = await subscriptionResponse.json();
+  if (!subscriptions || subscriptions.length === 0) {
+    console.error('push: no subscriptions for users', userIds);
+    return;
+  }
   webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
 
   await Promise.all((subscriptions || []).map(async (subscription: { id: string; endpoint: string; p256dh: string; auth: string }) => {
@@ -89,6 +108,7 @@ async function notifyAgentNewLead(agentId: string, leadName: string) {
         JSON.stringify({ title: 'Новый клиент', body: `${leadName} назначен вам через CRM`, url: '/leads' }),
       );
     } catch (error) {
+      console.error('push: sendNotification failed', (error as Error).message);
       const statusCode = (error as { statusCode?: number }).statusCode;
       if (statusCode === 404 || statusCode === 410) {
         await fetch(`${currentUrl}/rest/v1/push_subscriptions?id=eq.${encodeURIComponent(subscription.id)}`, {
@@ -156,7 +176,7 @@ async function syncLead(body: Record<string, unknown>) {
     sync_status: 'synced',
     sync_error: null,
   });
-  await notifyAgentNewLead(agentId, name).catch(() => undefined);
+  await notifyAgentNewLead(agentId, name).catch((err) => console.error('push notification failed:', err));
   return { external_contact_id: externalContactId };
 }
 
@@ -363,7 +383,12 @@ async function myAnalytics(authInfo: AuthInfo, body: Record<string, unknown>) {
   if (!mgrRes.ok) throw new Error('Failed to fetch manager');
   const mgrData = await mgrRes.json();
   const externalAgentId = mgrData?.[0]?.external_agent_id;
-  if (!externalAgentId) throw new Error('Agent not linked to external CRM');
+  if (!externalAgentId) {
+    return {
+      totals: { total: 0, statuses: {}, in_work: 0, deposits: 0, invalid: 0, work_conversion: 0, deposit_conversion: 0, invalid_conversion: 0 },
+      by_agent: [],
+    };
+  }
 
   const { from, to } = dateRangeFromBody(body);
   const leads = await fetchLocalLeads(from, to, externalAgentId);
