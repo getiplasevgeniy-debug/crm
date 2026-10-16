@@ -19,6 +19,21 @@ export type ExternalAnalyticsRow = {
   invalid_conversion: number;
 };
 
+export type ExternalAnalyticsTotals = {
+  total: number;
+  in_work: number;
+  deposits: number;
+  invalid: number;
+  work_conversion: number;
+  deposit_conversion: number;
+  invalid_conversion: number;
+};
+
+export type ExternalAnalyticsResponse = {
+  totals: ExternalAnalyticsTotals;
+  by_agent: ExternalAnalyticsRow[];
+};
+
 async function callExternalCrm(body: Record<string, unknown>) {
   const { data } = await supabase.auth.getSession();
   const accessToken = data.session?.access_token;
@@ -55,8 +70,11 @@ export async function fetchExternalAgents() {
   return result as ExternalAgent[];
 }
 
-export async function fetchExternalAnalytics() {
-  const result = await callExternalCrm({ action: 'analytics' });
-  if (!Array.isArray(result)) throw new Error('Внешняя CRM вернула некорректную аналитику');
-  return result as ExternalAnalyticsRow[];
+export async function fetchExternalAnalytics(from?: string): Promise<ExternalAnalyticsResponse> {
+  const payload: Record<string, unknown> = { action: 'analytics' };
+  if (from) payload.from = from;
+  const result = await callExternalCrm(payload);
+  if (!result || typeof result !== 'object' || !Array.isArray(result.by_agent))
+    throw new Error('Внешняя CRM вернула некорректную аналитику');
+  return result as ExternalAnalyticsResponse;
 }

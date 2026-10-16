@@ -121,14 +121,20 @@ async function listAgents() {
   }));
 }
 
-async function analytics() {
+async function analytics(body: Record<string, unknown>) {
   requireConfiguration();
+  const from = typeof body.from === 'string' ? body.from : '';
+  let contactsPath = '/rest/v1/contacts?select=id,agent_id,status,created_at&limit=10000&order=created_at.desc';
+  if (from && !Number.isNaN(Date.parse(from))) {
+    contactsPath += `&created_at=gte.${encodeURIComponent(from)}`;
+  }
   const [contacts, agents] = await Promise.all([
-    fetchAll('/rest/v1/contacts?select=id,agent_id,status,created_at&limit=10000'),
+    fetchAll(contactsPath),
     fetchAll('/rest/v1/agents?select=id,name&status=eq.active&limit=1000'),
   ]);
   const agentNames = new Map<string, string>((agents || []).map((agent: { id: string; name: string }) => [agent.id, agent.name]));
   const summaries = new Map<string, { agent_id: string; agent_name: string; total: number; in_work: number; deposits: number; invalid: number }>();
+  let totals = { total: 0, in_work: 0, deposits: 0, invalid: 0 };
 
   for (const contact of contacts || []) {
     const agentId = contact.agent_id || 'unassigned';
@@ -141,18 +147,29 @@ async function analytics() {
       invalid: 0,
     };
     summary.total += 1;
-    if (contact.status === 'В работе') summary.in_work += 1;
-    if (contact.status === 'Депозит') summary.deposits += 1;
-    if (contact.status === 'Не валид') summary.invalid += 1;
+    totals.total += 1;
+    if (contact.status === 'В работе') { summary.in_work += 1; totals.in_work += 1; }
+    if (contact.status === 'Депозит') { summary.deposits += 1; totals.deposits += 1; }
+    if (contact.status === 'Не валид') { summary.invalid += 1; totals.invalid += 1; }
     summaries.set(agentId, summary);
   }
 
-  return Array.from(summaries.values()).map((summary) => ({
+  const byAgent = Array.from(summaries.values()).map((summary) => ({
     ...summary,
     work_conversion: summary.total ? summary.in_work / summary.total : 0,
     deposit_conversion: summary.in_work ? summary.deposits / summary.in_work : 0,
     invalid_conversion: summary.total ? summary.invalid / summary.total : 0,
   })).sort((a, b) => b.total - a.total);
+
+  return {
+    totals: {
+      ...totals,
+      work_conversion: totals.total ? totals.in_work / totals.total : 0,
+      deposit_conversion: totals.in_work ? totals.deposits / totals.in_work : 0,
+      invalid_conversion: totals.total ? totals.invalid / totals.total : 0,
+    },
+    by_agent: byAgent,
+  };
 }
 
 Deno.serve(async (request) => {
@@ -161,7 +178,7 @@ Deno.serve(async (request) => {
   try {
     if (!isAdmin(request)) return json({ error: 'Not authorized' }, 403);
     const body = await request.json();
-    const result = body.action === 'analytics' ? await analytics() : body.action === 'list_agents' ? await listAgents() : await syncLead(body);
+    const result = body.action === 'analytics' ? await analytics(body) : body.action === 'list_agents' ? await listAgents() : await syncLead(body);
     return json(result);
   } catch (error) {
     console.error('external CRM request failed', error);
