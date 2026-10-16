@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { supabase, Manager } from '@/lib/supabase';
 import { colors } from '@/lib/theme';
 import { formatMoney } from '@/lib/format';
@@ -14,6 +14,7 @@ import { Badge } from '@/components/Badge';
 import { Plus, Phone, Trash2, Pencil, LogOut, Mail, Link2, ChevronDown, Check } from 'lucide-react-native';
 import { useAuth } from '@/lib/auth';
 import { fetchExternalAgents, ExternalAgent } from '@/lib/externalCrm';
+import { alertDialog, confirmDialog } from '@/lib/confirm';
 
 type ManagerWithStats = Manager & {
   total_transactions: number;
@@ -209,24 +210,17 @@ export default function ManagersScreen() {
   };
 
   const handleDelete = (m: Manager) => {
-    Alert.alert(
+    confirmDialog(
       'Удалить менеджера?',
       `Менеджер "${m.name}" и все его транзакции, бонусы и выплаты будут удалены.`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Удалить',
-          style: 'destructive',
-          onPress: async () => {
-            const { error: err } = await supabase.from('managers').delete().eq('id', m.id);
-            if (err) {
-              Alert.alert('Ошибка', err.message);
-              return;
-            }
-            fetchManagers();
-          },
-        },
-      ],
+      async () => {
+        const { error: err } = await supabase.from('managers').delete().eq('id', m.id);
+        if (err) {
+          alertDialog('Ошибка', err.message);
+          return;
+        }
+        await fetchManagers();
+      },
     );
   };
 
