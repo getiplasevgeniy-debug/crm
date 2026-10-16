@@ -34,13 +34,14 @@ export default function ManagersScreen() {
   const [percentage, setPercentage] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [externalAgentId, setExternalAgentId] = useState('');
   const [saving, setSaving] = useState(false);
 
   const fetchManagers = useCallback(async () => {
     setError(null);
     const { data, error: err } = await supabase
       .from('managers')
-      .select('id, name, phone, salary_percentage, created_at, email, auth_user_id')
+      .select('id, name, phone, salary_percentage, created_at, email, auth_user_id, external_agent_id')
       .order('created_at', { ascending: false });
 
     if (err) {
@@ -93,6 +94,7 @@ export default function ManagersScreen() {
     setPercentage('');
     setEmail('');
     setPassword('');
+    setExternalAgentId('');
     setModalVisible(true);
   };
 
@@ -103,6 +105,7 @@ export default function ManagersScreen() {
     setPercentage(String(m.salary_percentage));
     setEmail(m.email || '');
     setPassword('');
+    setExternalAgentId(m.external_agent_id || '');
     setModalVisible(true);
   };
 
@@ -126,6 +129,7 @@ export default function ManagersScreen() {
           name: name.trim(),
           phone: phone.trim() || null,
           salary_percentage: pct,
+          external_agent_id: externalAgentId.trim() || null,
         })
         .eq('id', editingManager.id);
       if (err) {
@@ -167,6 +171,7 @@ export default function ManagersScreen() {
           salary_percentage: pct,
           email: email.trim(),
           password,
+          external_agent_id: externalAgentId.trim() || null,
         }),
       });
 
@@ -299,6 +304,12 @@ export default function ManagersScreen() {
           onChangeText={setPercentage}
           placeholder="10"
           keyboardType="numeric"
+        />
+        <LabeledInput
+          label="ID агента во второй CRM"
+          value={externalAgentId}
+          onChangeText={setExternalAgentId}
+          placeholder="UUID агента из таблицы agents"
         />
         {!editingManager ? (
           <>

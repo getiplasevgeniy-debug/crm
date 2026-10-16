@@ -1,0 +1,49 @@
+import { supabase } from '@/lib/supabase';
+
+export type ExternalAnalyticsRow = {
+  agent_id: string;
+  agent_name: string;
+  total: number;
+  in_work: number;
+  deposits: number;
+  invalid: number;
+  work_conversion: number;
+  deposit_conversion: number;
+  invalid_conversion: number;
+};
+
+async function callExternalCrm(body: Record<string, unknown>) {
+  const { data } = await supabase.auth.getSession();
+  const accessToken = data.session?.access_token;
+  if (!accessToken) throw new Error('Сессия истекла. Войдите снова.');
+
+  const response = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/external-crm`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result) throw new Error(result?.error || 'Не удалось связаться с внешней CRM');
+  return result;
+}
+
+export function syncLead(input: {
+  local_lead_id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  lost_with: string | null;
+  application_date: string;
+  external_agent_id: string;
+}) {
+  return callExternalCrm({ action: 'sync_lead', ...input });
+}
+
+export async function fetchExternalAnalytics() {
+  const result = await callExternalCrm({ action: 'analytics' });
+  if (!Array.isArray(result)) throw new Error('Внешняя CRM вернула некорректную аналитику');
+  return result as ExternalAnalyticsRow[];
+}

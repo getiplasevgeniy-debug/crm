@@ -34,7 +34,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const callerRole = userData.user.user_metadata?.role || userData.user.app_metadata?.role;
+    const callerRole = userData.user.app_metadata?.role;
     if (callerRole !== "admin") {
       return new Response(JSON.stringify({ error: "Forbidden: admin only" }), {
         status: 403,
@@ -43,7 +43,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { name, phone, salary_percentage, email, password } = body;
+    const { name, phone, salary_percentage, email, password, external_agent_id } = body;
 
     if (!name || !email || !password) {
       return new Response(JSON.stringify({ error: "name, email, password are required" }), {
@@ -82,6 +82,7 @@ Deno.serve(async (req: Request) => {
         salary_percentage: salary_percentage || 0,
         auth_user_id: newAuthUser.user.id,
         email,
+        external_agent_id: external_agent_id || null,
       })
       .select()
       .single();

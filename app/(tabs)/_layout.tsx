@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Users, ArrowDownCircle, Gift, Wallet, BarChart3 } from 'lucide-react-native';
+import { Users, ArrowDownCircle, Gift, Wallet, BarChart3, UserPlus, LineChart } from 'lucide-react-native';
 import { colors } from '@/lib/theme';
 import { useAuth } from '@/lib/auth';
 
@@ -44,6 +44,28 @@ export default function TabLayout() {
             tabBarIcon: ({ size, color }) => <Users size={size} color={color} />,
           }}
         />
+      )}
+      {isAdmin ? (
+        <Tabs.Screen
+          name="leads"
+          options={{
+            title: 'Клиенты',
+            tabBarIcon: ({ size, color }) => <UserPlus size={size} color={color} />,
+          }}
+        />
+      ) : (
+        <Tabs.Screen name="leads" options={{ href: null }} />
+      )}
+      {isAdmin ? (
+        <Tabs.Screen
+          name="analytics"
+          options={{
+            title: 'Лиды',
+            tabBarIcon: ({ size, color }) => <LineChart size={size} color={color} />,
+          }}
+        />
+      ) : (
+        <Tabs.Screen name="analytics" options={{ href: null }} />
       )}
       <Tabs.Screen
         name="transactions"
