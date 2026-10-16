@@ -25,7 +25,14 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const token = authHeader.replace("Bearer ", "");
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    if (!token) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { data: userData, error: authErr } = await supabase.auth.getUser(token);
     if (authErr || !userData.user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {

@@ -188,7 +188,15 @@ export default function ManagersScreen() {
           setTimeout(() => reject(new Error('Сервер не ответил. Проверьте подключение и попробуйте снова.')), 15000);
         });
         const { data, error: functionError } = await Promise.race([request, timeout]);
-        if (functionError) throw new Error(functionError.message);
+        if (functionError) {
+          let message = functionError.message;
+          const context = functionError.context;
+          if (context instanceof Response) {
+            const payload = await context.json().catch(() => null) as { error?: string } | null;
+            if (payload?.error) message = payload.error;
+          }
+          throw new Error(message);
+        }
         if (!data?.manager) throw new Error('Сервер не подтвердил создание менеджера.');
       }
       setModalVisible(false);
