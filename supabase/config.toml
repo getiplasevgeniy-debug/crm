@@ -3,3 +3,6 @@ verify_jwt = true
 
 [functions.external-crm]
 verify_jwt = true
+
+[functions.crm-util]
+verify_jwt = false

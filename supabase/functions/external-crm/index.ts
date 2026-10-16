@@ -141,15 +141,12 @@ async function listAgents() {
 }
 
 async function analytics(body: Record<string, unknown>) {
-  const trackingStart = '2026-10-01T00:00:00.000Z';
   requireConfiguration();
-  const from = typeof body.from === 'string' ? body.from : '';
-  const to = typeof body.to === 'string' ? body.to : '';
-  const requestedFrom = from && !Number.isNaN(Date.parse(from)) ? from : trackingStart;
-  const effectiveFrom = new Date(requestedFrom) < new Date(trackingStart) ? trackingStart : requestedFrom;
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const effectiveFrom = today.toISOString();
   let contactsPath = '/rest/v1/contacts?select=id,agent_id,status,created_at&limit=10000&order=created_at.desc';
   contactsPath += `&created_at=gte.${encodeURIComponent(effectiveFrom)}`;
-  if (to && !Number.isNaN(Date.parse(to))) contactsPath += `&created_at=lt.${encodeURIComponent(to)}`;
   const [contacts, agents, history] = await Promise.all([
     fetchAll(contactsPath),
     fetchAll('/rest/v1/agents?select=id,name&status=eq.active&limit=1000'),
@@ -193,13 +190,54 @@ async function analytics(body: Record<string, unknown>) {
   return { totals: addConversions(totals), by_agent: Array.from(summaries.values()).map(addConversions).sort((a, b) => b.total - a.total) };
 }
 
+async function findContact(body: Record<string, unknown>) {
+  requireConfiguration();
+  const name = typeof body.name === 'string' ? body.name.trim() : '';
+  if (!name) throw new Error('name required');
+  const encoded = encodeURIComponent(`%${name}%`);
+  const contacts = await fetchAll(`/rest/v1/contacts?select=id,name,agent_id,status,created_at&name=ilike.${encoded}&limit=20&order=created_at.desc`);
+  const agents = await fetchAll('/rest/v1/agents?select=id,name&limit=1000');
+  const agentMap = new Map<string, string>((agents || []).map((a: { id: string; name: string }) => [a.id, a.name]));
+  return (contacts || []).map((c: { id: string; name: string; agent_id: string; status: string; created_at: string }) => ({
+    id: c.id,
+    name: c.name,
+    agent_id: c.agent_id,
+    agent_name: agentMap.get(c.agent_id) || null,
+    status: c.status,
+    created_at: c.created_at,
+  }));
+}
+
+async function assignContact(body: Record<string, unknown>) {
+  requireConfiguration();
+  const contactId = typeof body.contact_id === 'string' ? body.contact_id.trim() : '';
+  const agentId = typeof body.agent_id === 'string' ? body.agent_id.trim() : '';
+  const status = typeof body.status === 'string' ? body.status.trim() : '';
+  if (!contactId || !agentId) throw new Error('contact_id and agent_id required');
+  const patch: Record<string, string> = { agent_id: agentId, updated_at: new Date().toISOString() };
+  if (status) patch.status = status;
+  const response = await fetch(`${targetUrl}/rest/v1/contacts?id=eq.${encodeURIComponent(contactId)}`, {
+    method: 'PATCH',
+    headers: { ...targetHeaders(), Prefer: 'return=representation' },
+    body: JSON.stringify(patch),
+  });
+  if (!response.ok) throw new Error('Failed to update contact');
+  const rows = await response.json();
+  return { updated: rows?.[0] ?? null };
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders });
 
   try {
     if (!isAdmin(request)) return json({ error: 'Not authorized' }, 403);
     const body = await request.json();
-    const result = body.action === 'analytics' ? await analytics(body) : body.action === 'list_agents' ? await listAgents() : await syncLead(body);
+    let result;
+    if (body.action === 'analytics') result = await analytics(body);
+    else if (body.action === 'list_agents') result = await listAgents();
+    else if (body.action === 'find_contact') result = await findContact(body);
+    else if (body.action === 'assign_contact') result = await assignContact(body);
+    else result = await syncLead(body);
     return json(result);
   } catch (error) {
     console.error('external CRM request failed', error);
