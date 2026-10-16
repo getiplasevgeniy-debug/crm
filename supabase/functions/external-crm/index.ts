@@ -164,9 +164,10 @@ async function analytics(body: Record<string, unknown>) {
   const totals = { total: 0, statuses: {} as Record<string, number> };
   for (const contact of contacts || []) {
     if (typeof contact.notes !== 'string' || !contact.notes.trim() || typeof contact.created_at !== 'string') continue;
+    const statuses = historyByContact.get(contact.id) || (typeof contact.status === 'string' ? [contact.status] : []);
+    if (statuses.includes('Нет ответа')) continue;
     const agentId = contact.agent_id || 'unassigned';
     const summary = summaries.get(agentId) || makeSummary(agentId);
-    const statuses = historyByContact.get(contact.id) || (typeof contact.status === 'string' ? [contact.status] : []);
     summary.total += 1;
     totals.total += 1;
     for (const status of statuses) {

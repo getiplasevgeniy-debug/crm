@@ -74,7 +74,7 @@ export default function AnalyticsScreen() {
 
         <View style={styles.definitionCard}>
           <BarChart3 size={20} color={colors.primary[300]} />
-          <Text style={styles.definitionText}>В статистику попадают клиенты с комментарием и датой добавления с 1 октября 2026 года. Статусы считаются по истории изменений, проценты — от всех клиентов агента.</Text>
+          <Text style={styles.definitionText}>В статистику попадают клиенты с комментарием и датой добавления с 1 октября 2026 года. Клиенты со статусом «Нет ответа» не учитываются в общем количестве. Статусы считаются по истории изменений, проценты — от всех клиентов агента.</Text>
         </View>
 
         {totals && !error ? (
