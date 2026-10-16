@@ -273,6 +273,16 @@ function isRealAgent(name: string | undefined | null): boolean {
   return lower !== 'админ' && lower !== 'admin' && lower !== 'administrator';
 }
 
+async function purgeOrphanedLeads(leads: LocalLead[], contactById: Map<string, unknown>): Promise<void> {
+  const orphans = leads.filter((lead) => !contactById.has(lead.external_contact_id));
+  for (const orphan of orphans) {
+    await fetch(`${currentUrl}/rest/v1/lead_submissions?external_contact_id=eq.${encodeURIComponent(orphan.external_contact_id)}`, {
+      method: 'DELETE',
+      headers: { apikey: currentServiceRoleKey!, Authorization: `Bearer ${currentServiceRoleKey!}` },
+    });
+  }
+}
+
 async function buildAnalytics(leads: LocalLead[], includeAllAgents: boolean) {
   const [rawAgents, history] = await Promise.all([
     fetchAll('/rest/v1/agents?select=id,name&limit=1000'),
@@ -296,24 +306,29 @@ async function buildAnalytics(leads: LocalLead[], includeAllAgents: boolean) {
   }
 
   const contactIds = Array.from(new Set(leads.map((lead) => lead.external_contact_id)));
+  const contactById = new Map<string, { agent_id?: string; status?: string }>();
   if (contactIds.length > 0) {
     const idFilter = contactIds.map((id) => encodeURIComponent(id)).join(',');
     const contacts = await fetchAll(`/rest/v1/contacts?select=id,agent_id,status&limit=10000&id=in.(${idFilter})`);
-    const contactById = new Map<string, { agent_id?: string; status?: string }>(
-      (contacts || []).map((contact: { id: string; agent_id?: string; status?: string }) => [contact.id, contact]),
-    );
-    for (const lead of leads) {
-      const contact = contactById.get(lead.external_contact_id);
-      const agentId = lead.external_agent_id;
-      const agentName = agentNames.get(agentId);
-      if (!agentName) continue;
-      const summary = summaries.get(agentId) || makeAnalyticsSummary(agentId, agentName);
-      const currentStatus = contact?.status || '';
-      const statuses = historyByContact.get(lead.external_contact_id) || (currentStatus ? [currentStatus] : []);
-      summary.total += 1;
-      for (const status of statuses) summary.statuses[status] = (summary.statuses[status] || 0) + 1;
-      summaries.set(agentId, summary);
+    for (const contact of (contacts || []) as Array<{ id: string; agent_id?: string; status?: string }>) {
+      contactById.set(contact.id, contact);
     }
+  }
+
+  await purgeOrphanedLeads(leads, contactById);
+  const validLeads = leads.filter((lead) => contactById.has(lead.external_contact_id));
+
+  for (const lead of validLeads) {
+    const contact = contactById.get(lead.external_contact_id);
+    const agentId = lead.external_agent_id;
+    const agentName = agentNames.get(agentId);
+    if (!agentName) continue;
+    const summary = summaries.get(agentId) || makeAnalyticsSummary(agentId, agentName);
+    const currentStatus = contact?.status || '';
+    const statuses = historyByContact.get(lead.external_contact_id) || (currentStatus ? [currentStatus] : []);
+    summary.total += 1;
+    for (const status of statuses) summary.statuses[status] = (summary.statuses[status] || 0) + 1;
+    summaries.set(agentId, summary);
   }
 
   const totals = makeAnalyticsSummary('all', 'Все агенты');
