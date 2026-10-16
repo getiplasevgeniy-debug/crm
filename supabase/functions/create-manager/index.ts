@@ -74,6 +74,10 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const external_agent_id = typeof body.external_agent_id === "string" && body.external_agent_id
+      ? body.external_agent_id
+      : null;
+
     const { data: manager, error: mgrErr } = await supabase
       .from("managers")
       .insert({
@@ -82,6 +86,7 @@ Deno.serve(async (req: Request) => {
         salary_percentage: salary_percentage || 0,
         auth_user_id: newAuthUser.user.id,
         email,
+        external_agent_id,
       })
       .select()
       .single();

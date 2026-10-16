@@ -148,13 +148,27 @@ async function listAgents() {
   }));
 }
 
+function dateRangeFromBody(body: Record<string, unknown>): { from?: string; to?: string } {
+  const from = typeof body.from === 'string' ? body.from : undefined;
+  const to = typeof body.to === 'string' ? body.to : undefined;
+  return { from, to };
+}
+
+function buildContactsPath(basePath: string, from?: string, to?: string): string {
+  let path = basePath;
+  if (from) path += `&created_at=gte.${encodeURIComponent(from)}`;
+  if (to) path += `&created_at=lt.${encodeURIComponent(to)}`;
+  return path;
+}
+
 async function analytics(body: Record<string, unknown>) {
   requireConfiguration();
+  const { from, to } = dateRangeFromBody(body);
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
-  const effectiveFrom = today.toISOString();
+  const effectiveFrom = from || today.toISOString();
   let contactsPath = '/rest/v1/contacts?select=id,agent_id,status,created_at&limit=10000&order=created_at.desc';
-  contactsPath += `&created_at=gte.${encodeURIComponent(effectiveFrom)}`;
+  contactsPath = buildContactsPath(contactsPath, effectiveFrom, to);
   const [contacts, agents, history] = await Promise.all([
     fetchAll(contactsPath),
     fetchAll('/rest/v1/agents?select=id,name&status=eq.active&limit=1000'),
@@ -234,7 +248,7 @@ async function assignContact(body: Record<string, unknown>) {
   return { updated: rows?.[0] ?? null };
 }
 
-async function myAnalytics(authInfo: AuthInfo) {
+async function myAnalytics(authInfo: AuthInfo, body: Record<string, unknown>) {
   requireConfiguration();
   if (!authInfo.userId) throw new Error('Not authenticated');
 
@@ -250,12 +264,12 @@ async function myAnalytics(authInfo: AuthInfo) {
   const externalAgentId = mgrData?.[0]?.external_agent_id;
   if (!externalAgentId) throw new Error('Agent not linked to external CRM');
 
-  // Fetch only this agent's contacts from today
+  const { from, to } = dateRangeFromBody(body);
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
-  const effectiveFrom = today.toISOString();
+  const effectiveFrom = from || today.toISOString();
   let contactsPath = `/rest/v1/contacts?select=id,agent_id,status,created_at&limit=10000&order=created_at.desc`;
-  contactsPath += `&created_at=gte.${encodeURIComponent(effectiveFrom)}`;
+  contactsPath = buildContactsPath(contactsPath, effectiveFrom, to);
   contactsPath += `&agent_id=eq.${encodeURIComponent(externalAgentId)}`;
 
   const [contacts, agents, history] = await Promise.all([
@@ -307,7 +321,7 @@ Deno.serve(async (request) => {
     const body = await request.json();
     let result;
     if (body.action === 'my_analytics') {
-      result = await myAnalytics(authInfo);
+      result = await myAnalytics(authInfo, body);
     } else if (body.action === 'analytics') {
       if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
       result = await analytics(body);

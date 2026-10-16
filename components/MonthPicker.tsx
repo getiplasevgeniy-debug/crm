@@ -2,28 +2,35 @@ import { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { colors } from '@/lib/theme';
 import { monthLabel, currentMonthKey, generateMonthKeys } from '@/lib/format';
-import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Calendar, Infinity as InfinityIcon } from 'lucide-react-native';
+
+const ALL_TIME = 'all-time';
 
 type Props = {
   value: string;
   onChange: (key: string) => void;
   monthsCount?: number;
+  allowAllTime?: boolean;
 };
 
-export function MonthPicker({ value, onChange, monthsCount = 12 }: Props) {
+export function MonthPicker({ value, onChange, monthsCount = 12, allowAllTime = false }: Props) {
   const [showPicker, setShowPicker] = useState(false);
   const monthKeys = generateMonthKeys(monthsCount);
+  const allOptions = allowAllTime ? [ALL_TIME, ...monthKeys] : monthKeys;
 
-  const currentIndex = monthKeys.indexOf(value);
-  const canGoPrev = currentIndex < monthKeys.length - 1;
+  const currentIndex = allOptions.indexOf(value);
+  const canGoPrev = currentIndex < allOptions.length - 1;
   const canGoNext = currentIndex > 0;
 
   const goPrev = () => {
-    if (canGoPrev) onChange(monthKeys[currentIndex + 1]);
+    if (canGoPrev) onChange(allOptions[currentIndex + 1]);
   };
   const goNext = () => {
-    if (canGoNext) onChange(monthKeys[currentIndex - 1]);
+    if (canGoNext) onChange(allOptions[currentIndex - 1]);
   };
+
+  const isAllTime = value === ALL_TIME;
+  const displayLabel = isAllTime ? 'За всё время' : monthLabel(value);
 
   return (
     <View style={styles.container}>
@@ -42,8 +49,12 @@ export function MonthPicker({ value, onChange, monthsCount = 12 }: Props) {
           onPress={() => setShowPicker((v) => !v)}
           activeOpacity={0.7}
         >
-          <Calendar size={16} color={colors.primary[400]} />
-          <Text style={styles.label}>{monthLabel(value)}</Text>
+          {isAllTime ? (
+            <InfinityIcon size={16} color={colors.accent[400]} />
+          ) : (
+            <Calendar size={16} color={colors.primary[400]} />
+          )}
+          <Text style={styles.label}>{displayLabel}</Text>
           {value === currentMonthKey() ? (
             <View style={styles.currentBadge}>
               <Text style={styles.currentBadgeText}>Текущий</Text>
@@ -63,6 +74,20 @@ export function MonthPicker({ value, onChange, monthsCount = 12 }: Props) {
 
       {showPicker ? (
         <ScrollView style={styles.dropdown} horizontal={false}>
+          {allowAllTime ? (
+            <TouchableOpacity
+              style={[styles.dropdownItem, isAllTime && styles.dropdownItemActive]}
+              onPress={() => {
+                onChange(ALL_TIME);
+                setShowPicker(false);
+              }}
+            >
+              <InfinityIcon size={14} color={isAllTime ? colors.neutral[0] : colors.accent[400]} />
+              <Text style={[styles.dropdownItemText, isAllTime && styles.dropdownItemTextActive]}>
+                За всё время
+              </Text>
+            </TouchableOpacity>
+          ) : null}
           {monthKeys.map((k) => (
             <TouchableOpacity
               key={k}
@@ -139,9 +164,12 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.neutral[800],
-    maxHeight: 240,
+    maxHeight: 280,
   },
   dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,

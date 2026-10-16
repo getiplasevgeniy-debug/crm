@@ -11,6 +11,7 @@ import {
 import { BarChart3, LogOut, RefreshCw, TrendingDown, TrendingUp, Users } from 'lucide-react-native';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { MonthPicker } from '@/components/MonthPicker';
 import { DonutChart, DonutLegend, colorForStatus } from '@/components/DonutChart';
 import {
   fetchExternalAnalytics,
@@ -22,6 +23,8 @@ import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { colors } from '@/lib/theme';
 import { currentMonthKey, getMonthRange, formatMoney } from '@/lib/format';
+
+const ALL_TIME = 'all-time';
 
 function percent(value: number) {
   return `${Math.round(value * 100)}%`;
@@ -44,15 +47,17 @@ function buildDonutData(row: { statuses: Record<string, number> }) {
     .sort((a, b) => b.value - a.value);
 }
 
-async function loadMonthlyExpenses(): Promise<number> {
-  const key = currentMonthKey();
-  const { start, end } = getMonthRange(key);
-  const { data } = await supabase
-    .from('ledger_entries')
-    .select('amount')
-    .eq('type', 'expense')
-    .gte('created_at', start)
-    .lt('created_at', end);
+function getPeriodRange(monthKey: string): { from?: string; to?: string } {
+  if (monthKey === ALL_TIME) return {};
+  const { start, end } = getMonthRange(monthKey);
+  return { from: start, to: end };
+}
+
+async function loadExpensesForPeriod(from?: string, to?: string): Promise<number> {
+  let query = supabase.from('ledger_entries').select('amount').eq('type', 'expense');
+  if (from) query = query.gte('created_at', from);
+  if (to) query = query.lt('created_at', to);
+  const { data } = await query;
   if (!data) return 0;
   return data.reduce((sum, row) => sum + Number(row.amount), 0);
 }
@@ -65,19 +70,21 @@ export default function AnalyticsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthKey());
 
   const load = useCallback(async () => {
     setError(null);
+    const { from, to } = getPeriodRange(selectedMonth);
     try {
       if (isAdmin) {
         const [analytics, expenses] = await Promise.all([
-          fetchExternalAnalytics(),
-          loadMonthlyExpenses(),
+          fetchExternalAnalytics(from, to),
+          loadExpensesForPeriod(from, to),
         ]);
         setData(analytics);
         setBudget(expenses);
       } else {
-        const analytics = await fetchMyAnalytics();
+        const analytics = await fetchMyAnalytics(from, to);
         setData(analytics);
       }
     } catch {
@@ -86,7 +93,7 @@ export default function AnalyticsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [isAdmin]);
+  }, [isAdmin, selectedMonth]);
 
   useEffect(() => {
     setLoading(true);
@@ -97,6 +104,7 @@ export default function AnalyticsScreen() {
 
   const totals = data?.totals;
   const rows = data?.by_agent ?? [];
+  const isAllTime = selectedMonth === ALL_TIME;
 
   const costPerLead = costLabel(budget, totals?.total ?? 0);
   const costPerWork = costLabel(budget, totals?.in_work ?? 0);
@@ -132,6 +140,13 @@ export default function AnalyticsScreen() {
           />
         }
       >
+        <MonthPicker
+          value={selectedMonth}
+          onChange={setSelectedMonth}
+          allowAllTime
+          monthsCount={24}
+        />
+
         {error ? <ErrorBanner message={error} /> : null}
 
         {/* Admin: expenses + cost funnel */}
@@ -140,10 +155,12 @@ export default function AnalyticsScreen() {
             <View style={styles.expenseCard}>
               <View style={styles.expenseRow}>
                 <TrendingDown size={18} color={colors.error[400]} />
-                <Text style={styles.expenseLabel}>Расходы за месяц (из Аудита)</Text>
+                <Text style={styles.expenseLabel}>
+                  Расходы {isAllTime ? 'за всё время' : 'за месяц'} (из Аудита)
+                </Text>
               </View>
               <Text style={styles.expenseValue}>
-                {budget > 0 ? `$${formatMoney(budget)}` : 'Нет расходов за этот месяц'}
+                {budget > 0 ? `$${formatMoney(budget)}` : 'Нет расходов за этот период'}
               </Text>
               <Text style={styles.expenseHint}>
                 Считается автоматически по статье «Расход» в меню Аудит. Зарплаты не включены.
@@ -212,7 +229,7 @@ export default function AnalyticsScreen() {
         ))}
 
         {!error && rows.length === 0 && !loading ? (
-          <Text style={styles.empty}>Нет данных за сегодня.</Text>
+          <Text style={styles.empty}>Нет данных за выбранный период.</Text>
         ) : null}
 
         {loading ? <ActivityIndicator color={colors.primary[400]} style={styles.loader} /> : null}
