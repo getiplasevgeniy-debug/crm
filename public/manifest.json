@@ -1,0 +1,17 @@
+{
+  "name": "CRM Менеджеры",
+  "short_name": "CRM",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050817",
+  "theme_color": "#050817",
+  "description": "Управление клиентами, агентами и аналитикой",
+  "icons": [
+    {
+      "src": "/assets/images/icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

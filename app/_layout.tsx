@@ -13,6 +13,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { colors } from '@/lib/theme';
+import { PushPermissionPrompt } from '@/components/PushPermissionPrompt';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -61,6 +62,15 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
+    if (typeof document !== 'undefined' && !document.querySelector('link[rel="manifest"]')) {
+      const manifest = document.createElement('link');
+      manifest.rel = 'manifest';
+      manifest.href = '/manifest.json';
+      document.head.appendChild(manifest);
+    }
+  }, []);
+
+  useEffect(() => {
     if (fontsLoaded || fontError) {
       SplashScreen.hideAsync();
     }
@@ -73,6 +83,7 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <RootLayoutNav />
+      <PushPermissionPrompt />
       <StatusBar style="light" />
     </AuthProvider>
   );

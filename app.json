@@ -14,7 +14,12 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "CRM Менеджеры",
+      "shortName": "CRM",
+      "themeColor": "#050817",
+      "backgroundColor": "#050817",
+      "display": "standalone"
     },
     "plugins": ["expo-router", "expo-font", "expo-web-browser"],
     "experiments": {

@@ -1,3 +1,5 @@
+import webpush from 'npm:web-push@3.6.7';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -8,6 +10,9 @@ const targetUrl = Deno.env.get('TARGET_SUPABASE_URL');
 const targetServiceRoleKey = Deno.env.get('TARGET_SUPABASE_SERVICE_ROLE_KEY');
 const currentUrl = Deno.env.get('SUPABASE_URL');
 const currentServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const vapidPublicKey = Deno.env.get('VAPID_PUBLIC_KEY');
+const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY');
+const vapidSubject = Deno.env.get('VAPID_SUBJECT') || 'mailto:admin@example.com';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -46,6 +51,44 @@ function targetHeaders() {
     Authorization: `Bearer ${targetServiceRoleKey!}`,
     'Content-Type': 'application/json',
   };
+}
+
+async function notifyAgentNewLead(agentId: string, leadName: string) {
+  if (!vapidPublicKey || !vapidPrivateKey) return;
+
+  const managerResponse = await fetch(`${currentUrl}/rest/v1/managers?select=auth_user_id&external_agent_id=eq.${encodeURIComponent(agentId)}&auth_user_id=not.is.null`, {
+    headers: { apikey: currentServiceRoleKey!, Authorization: `Bearer ${currentServiceRoleKey!}` },
+  });
+  if (!managerResponse.ok) return;
+  const managers = await managerResponse.json();
+  const userIds = (managers || [])
+    .map((manager: { auth_user_id?: string }) => manager.auth_user_id)
+    .filter((userId: unknown): userId is string => typeof userId === 'string');
+  if (userIds.length === 0) return;
+
+  const subscriptionResponse = await fetch(`${currentUrl}/rest/v1/push_subscriptions?select=id,endpoint,p256dh,auth&user_id=in.(${userIds.map(encodeURIComponent).join(',')})`, {
+    headers: { apikey: currentServiceRoleKey!, Authorization: `Bearer ${currentServiceRoleKey!}` },
+  });
+  if (!subscriptionResponse.ok) return;
+  const subscriptions = await subscriptionResponse.json();
+  webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+
+  await Promise.all((subscriptions || []).map(async (subscription: { id: string; endpoint: string; p256dh: string; auth: string }) => {
+    try {
+      await webpush.sendNotification(
+        { endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } },
+        JSON.stringify({ title: 'Новый клиент', body: `${leadName} назначен вам через CRM`, url: '/leads' }),
+      );
+    } catch (error) {
+      const statusCode = (error as { statusCode?: number }).statusCode;
+      if (statusCode === 404 || statusCode === 410) {
+        await fetch(`${currentUrl}/rest/v1/push_subscriptions?id=eq.${encodeURIComponent(subscription.id)}`, {
+          method: 'DELETE',
+          headers: { apikey: currentServiceRoleKey!, Authorization: `Bearer ${currentServiceRoleKey!}` },
+        });
+      }
+    }
+  }));
 }
 
 async function updateLocalLead(id: string, values: Record<string, unknown>) {
@@ -104,6 +147,7 @@ async function syncLead(body: Record<string, unknown>) {
     sync_status: 'synced',
     sync_error: null,
   });
+  await notifyAgentNewLead(agentId, name).catch(() => undefined);
   return { external_contact_id: externalContactId };
 }
 
