@@ -372,141 +372,6 @@ export default function AuditScreen() {
         {error ? <ErrorBanner message={error} /> : null}
       </ScreenHeader>
 
-      <MonthPicker value={selectedMonth} onChange={setSelectedMonth} />
-
-      <View style={styles.allTimeCard}>
-        <View style={styles.allTimeHeader}>
-          <Text style={styles.allTimeTitle}>За всё время</Text>
-        </View>
-        <View style={styles.allTimeRow}>
-          <View style={styles.allTimeItem}>
-            <Text style={styles.allTimeLabel}>Доход</Text>
-            <Text style={[styles.allTimeValue, { color: colors.accent[400] }]}>
-              {formatMoney(allTimeIncome)}
-            </Text>
-          </View>
-          <View style={styles.allTimeDivider} />
-          <View style={styles.allTimeItem}>
-            <Text style={styles.allTimeLabel}>Расход</Text>
-            <Text style={[styles.allTimeValue, { color: colors.error[400] }]}>
-              {formatMoney(allTimeExpense)}
-            </Text>
-          </View>
-          <View style={styles.allTimeDivider} />
-          <View style={styles.allTimeItem}>
-            <Text style={styles.allTimeLabel}>Зарплаты</Text>
-            <Text style={[styles.allTimeValue, { color: colors.warning[500] }]}>
-              {formatMoney(allTimeAccruedSalaries)}
-            </Text>
-          </View>
-          <View style={styles.allTimeDivider} />
-          <View style={styles.allTimeItem}>
-            <Text style={styles.allTimeLabel}>Чистая прибыль</Text>
-            <Text
-              style={[
-                styles.allTimeValue,
-                { color: allTimeNet >= 0 ? colors.primary[400] : colors.warning[500] },
-              ]}
-            >
-              {formatMoney(allTimeNet)}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.summaryRow}>
-        <View style={[styles.summaryCard, { backgroundColor: colors.accent[700] }]}>
-          <TrendingUp size={16} color={colors.neutral[0]} />
-          <Text style={styles.summaryCardLabel}>Доход</Text>
-          <Text style={styles.summaryCardValue}>{formatMoney(totalIncome)}</Text>
-        </View>
-        <View style={[styles.summaryCard, { backgroundColor: colors.error[600] }]}>
-          <TrendingDown size={16} color={colors.neutral[0]} />
-          <Text style={styles.summaryCardLabel}>Расход</Text>
-          <Text style={styles.summaryCardValue}>{formatMoney(totalExpense)}</Text>
-        </View>
-        <View style={[styles.summaryCard, { backgroundColor: colors.warning[600] }]}>
-          <Wallet size={16} color={colors.neutral[0]} />
-          <Text style={styles.summaryCardLabel}>Зарплаты</Text>
-          <Text style={styles.summaryCardValue}>{formatMoney(accruedSalaries)}</Text>
-        </View>
-        <View
-          style={[
-            styles.summaryCard,
-            { backgroundColor: netProfit >= 0 ? colors.primary[700] : colors.warning[600] },
-          ]}
-        >
-          <BarChart3 size={16} color={colors.neutral[0]} />
-          <Text style={styles.summaryCardLabel}>Прибыль</Text>
-          <Text style={styles.summaryCardValue}>{formatMoney(netProfit)}</Text>
-        </View>
-      </View>
-
-      {managerSummaries.length > 0 ? (
-        <View style={styles.managerSection}>
-          <View style={styles.sectionTitleRow}>
-            <Users size={16} color={colors.neutral[300]} />
-            <Text style={styles.sectionTitle}>Сводка по менеджерам</Text>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {managerSummaries.map((m) => (
-              <View key={m.managerId} style={styles.mgrCard}>
-                <Text style={styles.mgrName}>{m.managerName}</Text>
-                <View style={styles.mgrRow}>
-                  <Text style={styles.mgrLabel}>Доход:</Text>
-                  <Text style={[styles.mgrValue, { color: colors.accent[400] }]}>
-                    {formatMoney(m.income)}
-                  </Text>
-                </View>
-                <View style={styles.mgrRow}>
-                  <Text style={styles.mgrLabel}>Расход:</Text>
-                  <Text style={[styles.mgrValue, { color: colors.error[400] }]}>
-                    {formatMoney(m.expense)}
-                  </Text>
-                </View>
-                <View style={styles.mgrRow}>
-                  <Text style={styles.mgrLabel}>Зарплата:</Text>
-                  <Text style={[styles.mgrValue, { color: colors.warning[500] }]}>
-                    {formatMoney(m.accruedSalary)}
-                  </Text>
-                </View>
-                <View style={styles.mgrRow}>
-                  <Text style={styles.mgrLabel}>Чистая:</Text>
-                  <Text
-                    style={[
-                      styles.mgrValue,
-                      { color: m.net >= 0 ? colors.primary[400] : colors.warning[500] },
-                    ]}
-                  >
-                    {formatMoney(m.net)}
-                  </Text>
-                </View>
-                <Text style={styles.mgrTxCount}>{m.txCount} операций</Text>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
-      ) : null}
-
-      <View style={styles.actionRow}>
-        <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: colors.accent[600] }]}
-          onPress={() => openAdd('income')}
-          activeOpacity={0.85}
-        >
-          <Plus size={18} color={colors.neutral[0]} />
-          <Text style={styles.actionBtnText}>Добавить доход</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: colors.error[500] }]}
-          onPress={() => openAdd('expense')}
-          activeOpacity={0.85}
-        >
-          <Plus size={18} color={colors.neutral[0]} />
-          <Text style={styles.actionBtnText}>Добавить расход</Text>
-        </TouchableOpacity>
-      </View>
-
       <FlatList
         data={monthEntries}
         keyExtractor={(item) => item.id}
@@ -605,7 +470,146 @@ export default function AuditScreen() {
         }
         ListEmptyComponent={!loading ? <EmptyState message="Нет записей за этот месяц." /> : null}
         ListHeaderComponent={
-          monthEntries.length > 0 ? <Text style={styles.listTitle}>История операций</Text> : null
+          <View>
+            <MonthPicker value={selectedMonth} onChange={setSelectedMonth} />
+
+            <View style={styles.allTimeCard}>
+              <View style={styles.allTimeHeader}>
+                <Text style={styles.allTimeTitle}>За всё время</Text>
+              </View>
+              <View style={styles.allTimeRow}>
+                <View style={styles.allTimeItem}>
+                  <Text style={styles.allTimeLabel}>Доход</Text>
+                  <Text style={[styles.allTimeValue, { color: colors.accent[400] }]}>
+                    {formatMoney(allTimeIncome)}
+                  </Text>
+                </View>
+                <View style={styles.allTimeDivider} />
+                <View style={styles.allTimeItem}>
+                  <Text style={styles.allTimeLabel}>Расход</Text>
+                  <Text style={[styles.allTimeValue, { color: colors.error[400] }]}>
+                    {formatMoney(allTimeExpense)}
+                  </Text>
+                </View>
+                <View style={styles.allTimeDivider} />
+                <View style={styles.allTimeItem}>
+                  <Text style={styles.allTimeLabel}>Зарплаты</Text>
+                  <Text style={[styles.allTimeValue, { color: colors.warning[500] }]}>
+                    {formatMoney(allTimeAccruedSalaries)}
+                  </Text>
+                </View>
+                <View style={styles.allTimeDivider} />
+                <View style={styles.allTimeItem}>
+                  <Text style={styles.allTimeLabel}>Чистая прибыль</Text>
+                  <Text
+                    style={[
+                      styles.allTimeValue,
+                      { color: allTimeNet >= 0 ? colors.primary[400] : colors.warning[500] },
+                    ]}
+                  >
+                    {formatMoney(allTimeNet)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.summaryRow}>
+              <View style={[styles.summaryCard, { backgroundColor: colors.accent[700] }]}>
+                <TrendingUp size={16} color={colors.neutral[0]} />
+                <Text style={styles.summaryCardLabel}>Доход</Text>
+                <Text style={styles.summaryCardValue}>{formatMoney(totalIncome)}</Text>
+              </View>
+              <View style={[styles.summaryCard, { backgroundColor: colors.error[600] }]}>
+                <TrendingDown size={16} color={colors.neutral[0]} />
+                <Text style={styles.summaryCardLabel}>Расход</Text>
+                <Text style={styles.summaryCardValue}>{formatMoney(totalExpense)}</Text>
+              </View>
+              <View style={[styles.summaryCard, { backgroundColor: colors.warning[600] }]}>
+                <Wallet size={16} color={colors.neutral[0]} />
+                <Text style={styles.summaryCardLabel}>Зарплаты</Text>
+                <Text style={styles.summaryCardValue}>{formatMoney(accruedSalaries)}</Text>
+              </View>
+              <View
+                style={[
+                  styles.summaryCard,
+                  { backgroundColor: netProfit >= 0 ? colors.primary[700] : colors.warning[600] },
+                ]}
+              >
+                <BarChart3 size={16} color={colors.neutral[0]} />
+                <Text style={styles.summaryCardLabel}>Прибыль</Text>
+                <Text style={styles.summaryCardValue}>{formatMoney(netProfit)}</Text>
+              </View>
+            </View>
+
+            {managerSummaries.length > 0 ? (
+              <View style={styles.managerSection}>
+                <View style={styles.sectionTitleRow}>
+                  <Users size={16} color={colors.neutral[300]} />
+                  <Text style={styles.sectionTitle}>Сводка по менеджерам</Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {managerSummaries.map((m) => (
+                    <View key={m.managerId} style={styles.mgrCard}>
+                      <Text style={styles.mgrName}>{m.managerName}</Text>
+                      <View style={styles.mgrRow}>
+                        <Text style={styles.mgrLabel}>Доход:</Text>
+                        <Text style={[styles.mgrValue, { color: colors.accent[400] }]}>
+                          {formatMoney(m.income)}
+                        </Text>
+                      </View>
+                      <View style={styles.mgrRow}>
+                        <Text style={styles.mgrLabel}>Расход:</Text>
+                        <Text style={[styles.mgrValue, { color: colors.error[400] }]}>
+                          {formatMoney(m.expense)}
+                        </Text>
+                      </View>
+                      <View style={styles.mgrRow}>
+                        <Text style={styles.mgrLabel}>Зарплата:</Text>
+                        <Text style={[styles.mgrValue, { color: colors.warning[500] }]}>
+                          {formatMoney(m.accruedSalary)}
+                        </Text>
+                      </View>
+                      <View style={styles.mgrRow}>
+                        <Text style={styles.mgrLabel}>Чистая:</Text>
+                        <Text
+                          style={[
+                            styles.mgrValue,
+                            { color: m.net >= 0 ? colors.primary[400] : colors.warning[500] },
+                          ]}
+                        >
+                          {formatMoney(m.net)}
+                        </Text>
+                      </View>
+                      <Text style={styles.mgrTxCount}>{m.txCount} операций</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+
+            <View style={styles.actionRow}>
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: colors.accent[600] }]}
+                onPress={() => openAdd('income')}
+                activeOpacity={0.85}
+              >
+                <Plus size={18} color={colors.neutral[0]} />
+                <Text style={styles.actionBtnText}>Добавить доход</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: colors.error[500] }]}
+                onPress={() => openAdd('expense')}
+                activeOpacity={0.85}
+              >
+                <Plus size={18} color={colors.neutral[0]} />
+                <Text style={styles.actionBtnText}>Добавить расход</Text>
+              </TouchableOpacity>
+            </View>
+
+            {monthEntries.length > 0 ? (
+              <Text style={styles.listTitle}>История операций</Text>
+            ) : null}
+          </View>
         }
       />
 
