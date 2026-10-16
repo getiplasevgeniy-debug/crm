@@ -13,7 +13,6 @@ export type Manager = {
   created_at: string;
   auth_user_id: string | null;
   email: string | null;
-  external_agent_id: string | null;
 };
 
 export type Transaction = {

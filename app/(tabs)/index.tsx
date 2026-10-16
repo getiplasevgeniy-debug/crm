@@ -40,7 +40,7 @@ export default function ManagersScreen() {
     setError(null);
     const { data, error: err } = await supabase
       .from('managers')
-      .select('id, name, phone, salary_percentage, created_at, email, auth_user_id, external_agent_id')
+      .select('id, name, phone, salary_percentage, created_at, email, auth_user_id')
       .order('created_at', { ascending: false });
 
     if (err) {
