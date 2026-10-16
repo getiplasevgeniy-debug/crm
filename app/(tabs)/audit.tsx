@@ -29,6 +29,7 @@ import {
   Users,
   Trash2,
   Pencil,
+  Wallet,
 } from 'lucide-react-native';
 import { useAuth } from '@/lib/auth';
 import { confirmDialog, alertDialog } from '@/lib/confirm';
@@ -52,6 +53,7 @@ type ManagerSummary = {
   managerName: string;
   income: number;
   expense: number;
+  accruedSalary: number;
   net: number;
   txCount: number;
 };
@@ -91,7 +93,7 @@ export default function AuditScreen() {
         .select('id, type, amount, comment, manager_id, created_at, managers:manager_id(name)')
         .order('created_at', { ascending: false })
         .limit(500),
-      supabase.from('managers').select('id, name').order('name'),
+      supabase.from('managers').select('id, name, salary_percentage').order('name'),
       supabase
         .from('transactions')
         .select('id, manager_id, amount, description, created_at, managers:manager_id(name)')
@@ -179,13 +181,30 @@ export default function AuditScreen() {
     return items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }, [ledgerEntries, rawTransactions, rawSalaries, start, end]);
 
+  const managerPctMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const m of managers) {
+      map.set(m.id, Number(m.salary_percentage) || 0);
+    }
+    return map;
+  }, [managers]);
+
+  const accruedSalaries = useMemo(() => {
+    return rawTransactions
+      .filter((t) => t.created_at >= start && t.created_at < end)
+      .reduce((sum, t) => {
+        const pct = managerPctMap.get(t.manager_id) || 0;
+        return sum + Number(t.amount) * (pct / 100);
+      }, 0);
+  }, [rawTransactions, managerPctMap, start, end]);
+
   const totalIncome = monthEntries
     .filter((e) => e.type === 'income')
     .reduce((s, e) => s + e.amount, 0);
   const totalExpense = monthEntries
-    .filter((e) => e.type === 'expense')
+    .filter((e) => e.type === 'expense' && e.source === 'ledger')
     .reduce((s, e) => s + e.amount, 0);
-  const netProfit = totalIncome - totalExpense;
+  const netProfit = totalIncome - totalExpense - accruedSalaries;
 
   const allTimeIncome = useMemo(() => {
     const ledgerInc = ledgerEntries.filter((e) => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0);
@@ -194,29 +213,44 @@ export default function AuditScreen() {
   }, [ledgerEntries, rawTransactions]);
 
   const allTimeExpense = useMemo(() => {
-    const ledgerExp = ledgerEntries.filter((e) => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0);
-    const salExp = rawSalaries.reduce((s, p) => s + Number(p.amount), 0);
-    return ledgerExp + salExp;
-  }, [ledgerEntries, rawSalaries]);
+    return ledgerEntries.filter((e) => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0);
+  }, [ledgerEntries]);
 
-  const allTimeNet = allTimeIncome - allTimeExpense;
+  const allTimeAccruedSalaries = useMemo(() => {
+    return rawTransactions.reduce((sum, t) => {
+      const pct = managerPctMap.get(t.manager_id) || 0;
+      return sum + Number(t.amount) * (pct / 100);
+    }, 0);
+  }, [rawTransactions, managerPctMap]);
+
+  const allTimeNet = allTimeIncome - allTimeExpense - allTimeAccruedSalaries;
 
   const managerSummaries = useMemo<ManagerSummary[]>(() => {
     const map = new Map<string, ManagerSummary>();
     for (const e of monthEntries) {
+      if (e.source === 'salary') continue;
       const key = e.managerName || 'unassigned';
       const name = e.managerName || 'Без менеджера';
       if (!map.has(key)) {
-        map.set(key, { managerId: key, managerName: name, income: 0, expense: 0, net: 0, txCount: 0 });
+        map.set(key, { managerId: key, managerName: name, income: 0, expense: 0, accruedSalary: 0, net: 0, txCount: 0 });
       }
       const s = map.get(key)!;
       s.txCount++;
-      if (e.type === 'income') s.income += e.amount;
-      else s.expense += e.amount;
-      s.net = s.income - s.expense;
+      if (e.type === 'income') {
+        s.income += e.amount;
+        if (e.source === 'transaction') {
+          const pct = managerPctMap.get(
+            rawTransactions.find((t) => `t-${t.id}` === e.id)?.manager_id || '',
+          ) || 0;
+          s.accruedSalary += e.amount * (pct / 100);
+        }
+      } else {
+        s.expense += e.amount;
+      }
+      s.net = s.income - s.expense - s.accruedSalary;
     }
     return Array.from(map.values()).sort((a, b) => b.net - a.net);
-  }, [monthEntries]);
+  }, [monthEntries, managerPctMap, rawTransactions]);
 
   const openAdd = (type: 'income' | 'expense') => {
     setEditingEntry(null);
@@ -360,6 +394,13 @@ export default function AuditScreen() {
           </View>
           <View style={styles.allTimeDivider} />
           <View style={styles.allTimeItem}>
+            <Text style={styles.allTimeLabel}>Зарплаты</Text>
+            <Text style={[styles.allTimeValue, { color: colors.warning[500] }]}>
+              {formatMoney(allTimeAccruedSalaries)}
+            </Text>
+          </View>
+          <View style={styles.allTimeDivider} />
+          <View style={styles.allTimeItem}>
             <Text style={styles.allTimeLabel}>Чистая прибыль</Text>
             <Text
               style={[
@@ -375,14 +416,19 @@ export default function AuditScreen() {
 
       <View style={styles.summaryRow}>
         <View style={[styles.summaryCard, { backgroundColor: colors.accent[700] }]}>
-          <TrendingUp size={20} color={colors.neutral[0]} />
+          <TrendingUp size={16} color={colors.neutral[0]} />
           <Text style={styles.summaryCardLabel}>Доход</Text>
           <Text style={styles.summaryCardValue}>{formatMoney(totalIncome)}</Text>
         </View>
         <View style={[styles.summaryCard, { backgroundColor: colors.error[600] }]}>
-          <TrendingDown size={20} color={colors.neutral[0]} />
+          <TrendingDown size={16} color={colors.neutral[0]} />
           <Text style={styles.summaryCardLabel}>Расход</Text>
           <Text style={styles.summaryCardValue}>{formatMoney(totalExpense)}</Text>
+        </View>
+        <View style={[styles.summaryCard, { backgroundColor: colors.warning[600] }]}>
+          <Wallet size={16} color={colors.neutral[0]} />
+          <Text style={styles.summaryCardLabel}>Зарплаты</Text>
+          <Text style={styles.summaryCardValue}>{formatMoney(accruedSalaries)}</Text>
         </View>
         <View
           style={[
@@ -390,8 +436,8 @@ export default function AuditScreen() {
             { backgroundColor: netProfit >= 0 ? colors.primary[700] : colors.warning[600] },
           ]}
         >
-          <BarChart3 size={20} color={colors.neutral[0]} />
-          <Text style={styles.summaryCardLabel}>Чистая прибыль</Text>
+          <BarChart3 size={16} color={colors.neutral[0]} />
+          <Text style={styles.summaryCardLabel}>Прибыль</Text>
           <Text style={styles.summaryCardValue}>{formatMoney(netProfit)}</Text>
         </View>
       </View>
@@ -416,6 +462,12 @@ export default function AuditScreen() {
                   <Text style={styles.mgrLabel}>Расход:</Text>
                   <Text style={[styles.mgrValue, { color: colors.error[400] }]}>
                     {formatMoney(m.expense)}
+                  </Text>
+                </View>
+                <View style={styles.mgrRow}>
+                  <Text style={styles.mgrLabel}>Зарплата:</Text>
+                  <Text style={[styles.mgrValue, { color: colors.warning[500] }]}>
+                    {formatMoney(m.accruedSalary)}
                   </Text>
                 </View>
                 <View style={styles.mgrRow}>
