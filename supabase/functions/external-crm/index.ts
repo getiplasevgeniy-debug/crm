@@ -109,19 +109,23 @@ async function fetchAll(path: string) {
   return response.json();
 }
 
-async function fetchStatusHistory() {
+async function fetchStatusHistory(): Promise<Array<{ contact_id: string; status: string }>> {
   const paths = [
     '/rest/v1/contact_status_history?select=contact_id,status,created_at&order=created_at.asc&limit=100000',
     '/rest/v1/status_history?select=contact_id,status,created_at&order=created_at.asc&limit=100000',
   ];
   for (const path of paths) {
-    const response = await fetch(`${targetUrl}${path}`, { headers: targetHeaders() });
-    if (response.ok) {
-      const history = await response.json();
-      if (Array.isArray(history)) return history;
+    try {
+      const response = await fetch(`${targetUrl}${path}`, { headers: targetHeaders() });
+      if (response.ok) {
+        const history = await response.json();
+        if (Array.isArray(history)) return history;
+      }
+    } catch {
+      // try next path
     }
   }
-  throw new Error('Target CRM status history unavailable');
+  return [];
 }
 
 async function listAgents() {
