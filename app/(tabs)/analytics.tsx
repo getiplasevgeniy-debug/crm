@@ -23,6 +23,7 @@ import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { colors } from '@/lib/theme';
 import { currentMonthKey, getMonthRange, formatMoney } from '@/lib/format';
+import { NotificationToggle } from '@/components/NotificationToggle';
 
 const ALL_TIME = 'all-time';
 
@@ -146,6 +147,8 @@ export default function AnalyticsScreen() {
           allowAllTime
           monthsCount={24}
         />
+
+        <NotificationToggle />
 
         {error ? <ErrorBanner message={error} /> : null}
 

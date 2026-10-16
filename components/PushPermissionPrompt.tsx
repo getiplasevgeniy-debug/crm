@@ -18,11 +18,16 @@ export function PushPermissionPrompt() {
         mounted = false;
       };
     }
-    if (pushIsAvailable()) {
-      hasPushSubscription().then((subscribed) => {
+    (async () => {
+      try {
+        const available = await pushIsAvailable();
+        if (!available) return;
+        const subscribed = await hasPushSubscription();
         if (mounted && !subscribed && Notification.permission !== 'denied') setVisible(true);
-      }).catch(() => undefined);
-    }
+      } catch {
+        // ignore
+      }
+    })();
     return () => {
       mounted = false;
     };

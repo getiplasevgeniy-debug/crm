@@ -10,8 +10,6 @@ const targetUrl = Deno.env.get('TARGET_SUPABASE_URL');
 const targetServiceRoleKey = Deno.env.get('TARGET_SUPABASE_SERVICE_ROLE_KEY');
 const currentUrl = Deno.env.get('SUPABASE_URL');
 const currentServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-const vapidPublicKey = Deno.env.get('VAPID_PUBLIC_KEY');
-const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY');
 const vapidSubject = Deno.env.get('VAPID_SUBJECT') || 'mailto:admin@example.com';
 
 function json(data: unknown, status = 200) {
@@ -53,7 +51,18 @@ function targetHeaders() {
   };
 }
 
+async function getAppSetting(key: string): Promise<string | null> {
+  const response = await fetch(`${currentUrl}/rest/v1/app_settings?select=value&key=eq.${encodeURIComponent(key)}&limit=1`, {
+    headers: { apikey: currentServiceRoleKey!, Authorization: `Bearer ${currentServiceRoleKey!}` },
+  });
+  if (!response.ok) return null;
+  const rows = await response.json();
+  return rows?.[0]?.value ?? null;
+}
+
 async function notifyAgentNewLead(agentId: string, leadName: string) {
+  const vapidPublicKey = await getAppSetting('vapid_public_key');
+  const vapidPrivateKey = await getAppSetting('vapid_private_key');
   if (!vapidPublicKey || !vapidPrivateKey) return;
 
   const managerResponse = await fetch(`${currentUrl}/rest/v1/managers?select=auth_user_id&external_agent_id=eq.${encodeURIComponent(agentId)}&auth_user_id=not.is.null`, {
@@ -238,13 +247,20 @@ function addConversions(summary: { total: number; statuses: Record<string, numbe
   };
 }
 
+function isRealAgent(name: string | undefined | null): boolean {
+  if (!name || !name.trim()) return false;
+  const lower = name.trim().toLowerCase();
+  return lower !== 'админ' && lower !== 'admin' && lower !== 'administrator';
+}
+
 async function buildAnalytics(leads: LocalLead[], includeAllAgents: boolean) {
-  const agentIds = Array.from(new Set(leads.map((lead) => lead.external_agent_id)));
-  const [agents, history] = await Promise.all([
+  const [rawAgents, history] = await Promise.all([
     fetchAll('/rest/v1/agents?select=id,name&limit=1000'),
     fetchStatusHistory(),
   ]);
-  const agentNames = new Map<string, string>((agents || []).map((agent: { id: string; name: string }) => [agent.id, agent.name]));
+  const agents = (rawAgents || []).filter((agent: { id: string; name?: string }) => isRealAgent(agent.name));
+  const agentIds = Array.from(new Set(leads.map((lead) => lead.external_agent_id)));
+  const agentNames = new Map<string, string>(agents.map((agent: { id: string; name: string }) => [agent.id, agent.name]));
   const summaries = new Map<string, ReturnType<typeof makeAnalyticsSummary>>();
   if (includeAllAgents) {
     for (const agent of agents || []) {
@@ -269,7 +285,8 @@ async function buildAnalytics(leads: LocalLead[], includeAllAgents: boolean) {
     for (const lead of leads) {
       const contact = contactById.get(lead.external_contact_id);
       const agentId = lead.external_agent_id;
-      const agentName = agentNames.get(agentId) || 'Без агента';
+      const agentName = agentNames.get(agentId);
+      if (!agentName) continue;
       const summary = summaries.get(agentId) || makeAnalyticsSummary(agentId, agentName);
       const currentStatus = contact?.status || '';
       const statuses = historyByContact.get(lead.external_contact_id) || (currentStatus ? [currentStatus] : []);
@@ -375,6 +392,8 @@ Deno.serve(async (request) => {
     } else if (body.action === 'assign_contact') {
       if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
       result = await assignContact(body);
+    } else if (body.action === 'get_vapid_public_key') {
+      result = { public_key: await getAppSetting('vapid_public_key') };
     } else {
       if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
       result = await syncLead(body);
