@@ -36,6 +36,7 @@ export default function ManagersScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // External agent binding
   const [externalAgents, setExternalAgents] = useState<ExternalAgent[]>([]);
@@ -115,6 +116,7 @@ export default function ManagersScreen() {
   };
 
   const openAdd = () => {
+    setSaveError(null);
     setEditingManager(null);
     setName('');
     setPhone('');
@@ -127,6 +129,7 @@ export default function ManagersScreen() {
   };
 
   const openEdit = (m: Manager) => {
+    setSaveError(null);
     setEditingManager(m);
     setName(m.name);
     setPhone(m.phone || '');
@@ -139,18 +142,18 @@ export default function ManagersScreen() {
   };
 
   const handleSave = async () => {
+    setSaveError(null);
     if (!name.trim()) {
-      Alert.alert('Ошибка', 'Введите имя менеджера');
+      setSaveError('Введите имя менеджера.');
       return;
     }
     const pct = parseFloat(percentage) || 0;
     if (pct < 0 || pct > 100) {
-      Alert.alert('Ошибка', 'Процент должен быть от 0 до 100');
+      setSaveError('Процент должен быть от 0 до 100.');
       return;
     }
 
     setSaving(true);
-
     try {
       if (editingManager) {
         const { error: err } = await supabase
@@ -162,58 +165,36 @@ export default function ManagersScreen() {
             external_agent_id: selectedAgentId,
           })
           .eq('id', editingManager.id);
-        if (err) {
-          Alert.alert('Ошибка', err.message);
-          return;
-        }
+        if (err) throw new Error(err.message);
       } else {
         if (!email.trim() || !password.trim()) {
-          Alert.alert('Ошибка', 'Введите email и пароль для входа менеджера');
-          return;
+          throw new Error('Введите email и пароль для входа менеджера.');
         }
         if (password.length < 6) {
-          Alert.alert('Ошибка', 'Пароль должен быть не менее 6 символов');
-          return;
+          throw new Error('Пароль должен быть не менее 6 символов.');
         }
 
-        const { data: sessionData } = await supabase.auth.getSession();
-        const accessToken = sessionData.session?.access_token;
-
-        if (!accessToken) {
-          Alert.alert('Ошибка', 'Нет авторизации');
-          return;
-        }
-
-        const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-        const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
-        const response = await fetch(`${supabaseUrl}/functions/v1/create-manager`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-            apikey: supabaseAnonKey,
-          },
-          body: JSON.stringify({
+        const request = supabase.functions.invoke('create-manager', {
+          body: {
             name: name.trim(),
             phone: phone.trim() || null,
             salary_percentage: pct,
             email: email.trim(),
             password,
             external_agent_id: selectedAgentId,
-          }),
+          },
         });
-
-        const result = await response.json().catch(() => null);
-
-        if (!response.ok || !result) {
-          Alert.alert('Ошибка', result?.error || `Не удалось создать менеджера (код ${response.status})`);
-          return;
-        }
+        const timeout = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Сервер не ответил. Проверьте подключение и попробуйте снова.')), 15000);
+        });
+        const { data, error: functionError } = await Promise.race([request, timeout]);
+        if (functionError) throw new Error(functionError.message);
+        if (!data?.manager) throw new Error('Сервер не подтвердил создание менеджера.');
       }
       setModalVisible(false);
       fetchManagers();
     } catch (err) {
-      Alert.alert('Ошибка', err instanceof Error ? err.message : 'Произошла ошибка при создании менеджера');
+      setSaveError(err instanceof Error ? err.message : 'Произошла ошибка при создании менеджера.');
     } finally {
       setSaving(false);
     }
@@ -426,6 +407,7 @@ export default function ManagersScreen() {
           </View>
         ) : null}
 
+        {saveError ? <ErrorBanner message={saveError} /> : null}
         <View style={{ height: 8 }} />
         <ActionButton
           label={editingManager ? 'Сохранить' : 'Добавить'}
