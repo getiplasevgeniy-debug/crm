@@ -25,7 +25,7 @@ export default function AnalyticsScreen() {
     setError(null);
     try {
       const range = getMonthRange(monthKey);
-      setData(await fetchExternalAnalytics(range.start));
+      setData(await fetchExternalAnalytics(range.start, range.end));
     } catch {
       setError('Не удалось загрузить аналитику второй CRM. Проверьте подключение.');
     } finally {
@@ -118,9 +118,9 @@ export default function AnalyticsScreen() {
               </View>
             </View>
             <View style={styles.metrics}>
-              <Metric label="В работе" value={row.in_work} conversion={percent(row.work_conversion)} color={colors.primary[300]} />
-              <Metric label="Депозит" value={row.deposits} conversion={percent(row.deposit_conversion)} color={colors.accent[400]} />
-              <Metric label="Не валид" value={row.invalid} conversion={percent(row.invalid_conversion)} color={colors.error[400]} />
+              <Metric label="В работе" value={row.in_work} conversion={percent(row.work_conversion)} convLabel="от всех" color={colors.primary[300]} />
+              <Metric label="Депозит" value={row.deposits} conversion={percent(row.deposit_conversion)} convLabel="от всех" color={colors.accent[400]} />
+              <Metric label="Не валид" value={row.invalid} conversion={percent(row.invalid_conversion)} convLabel="от всех" color={colors.error[400]} />
             </View>
           </View>
         ))}
@@ -140,12 +140,12 @@ function TotalMetric({ label, value, color }: { label: string; value: number; co
   );
 }
 
-function Metric({ label, value, conversion, color }: { label: string; value: number; conversion: string; color: string }) {
+function Metric({ label, value, conversion, convLabel, color }: { label: string; value: number; conversion: string; convLabel: string; color: string }) {
   return (
     <View style={styles.metric}>
       <Text style={styles.metricLabel}>{label}</Text>
       <Text style={[styles.metricValue, { color }]}>{value}</Text>
-      <Text style={styles.metricConversion}>{conversion} конверсия</Text>
+      <Text style={styles.metricConversion}>{conversion} {convLabel}</Text>
     </View>
   );
 }

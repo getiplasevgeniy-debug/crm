@@ -70,9 +70,10 @@ export async function fetchExternalAgents() {
   return result as ExternalAgent[];
 }
 
-export async function fetchExternalAnalytics(from?: string): Promise<ExternalAnalyticsResponse> {
+export async function fetchExternalAnalytics(from?: string, to?: string): Promise<ExternalAnalyticsResponse> {
   const payload: Record<string, unknown> = { action: 'analytics' };
   if (from) payload.from = from;
+  if (to) payload.to = to;
   const result = await callExternalCrm(payload);
   if (!result || typeof result !== 'object' || !Array.isArray(result.by_agent))
     throw new Error('Внешняя CRM вернула некорректную аналитику');

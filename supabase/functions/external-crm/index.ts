@@ -124,9 +124,13 @@ async function listAgents() {
 async function analytics(body: Record<string, unknown>) {
   requireConfiguration();
   const from = typeof body.from === 'string' ? body.from : '';
+  const to = typeof body.to === 'string' ? body.to : '';
   let contactsPath = '/rest/v1/contacts?select=id,agent_id,status,created_at&limit=10000&order=created_at.desc';
   if (from && !Number.isNaN(Date.parse(from))) {
     contactsPath += `&created_at=gte.${encodeURIComponent(from)}`;
+  }
+  if (to && !Number.isNaN(Date.parse(to))) {
+    contactsPath += `&created_at=lt.${encodeURIComponent(to)}`;
   }
   const [contacts, agents] = await Promise.all([
     fetchAll(contactsPath),
@@ -157,7 +161,7 @@ async function analytics(body: Record<string, unknown>) {
   const byAgent = Array.from(summaries.values()).map((summary) => ({
     ...summary,
     work_conversion: summary.total ? summary.in_work / summary.total : 0,
-    deposit_conversion: summary.in_work ? summary.deposits / summary.in_work : 0,
+    deposit_conversion: summary.total ? summary.deposits / summary.total : 0,
     invalid_conversion: summary.total ? summary.invalid / summary.total : 0,
   })).sort((a, b) => b.total - a.total);
 
@@ -165,7 +169,7 @@ async function analytics(body: Record<string, unknown>) {
     totals: {
       ...totals,
       work_conversion: totals.total ? totals.in_work / totals.total : 0,
-      deposit_conversion: totals.in_work ? totals.deposits / totals.in_work : 0,
+      deposit_conversion: totals.total ? totals.deposits / totals.total : 0,
       invalid_conversion: totals.total ? totals.invalid / totals.total : 0,
     },
     by_agent: byAgent,
