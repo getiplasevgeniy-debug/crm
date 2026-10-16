@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { supabase, LedgerEntry, Manager } from '@/lib/supabase';
 import { colors } from '@/lib/theme';
-import { formatMoney, formatDate, currentMonthKey, getMonthRange, defaultDateForMonth } from '@/lib/format';
+import { formatMoney, formatDate, currentMonthKey, getMonthRange, defaultDateForMonth, toKyivISODate } from '@/lib/format';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SheetModal } from '@/components/SheetModal';
 import { LabeledInput } from '@/components/LabeledInput';
@@ -294,7 +294,7 @@ export default function AuditScreen() {
           amount: amt,
           comment: comment.trim(),
           manager_id: managerId || null,
-          created_at: new Date(entryDate).toISOString(),
+          created_at: toKyivISODate(entryDate),
         })
         .eq('id', editingEntry.id);
 
@@ -309,7 +309,7 @@ export default function AuditScreen() {
         amount: amt,
         comment: comment.trim(),
         manager_id: managerId || null,
-        created_at: new Date(entryDate).toISOString(),
+        created_at: toKyivISODate(entryDate),
       });
 
       if (err) {

@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert } from 'react-native';
 import { supabase, Manager, Transaction } from '@/lib/supabase';
 import { colors } from '@/lib/theme';
-import { formatMoney, formatDate, currentMonthKey, getMonthRange, defaultDateForMonth } from '@/lib/format';
+import { formatMoney, formatDate, currentMonthKey, getMonthRange, defaultDateForMonth, toKyivISODate } from '@/lib/format';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SheetModal } from '@/components/SheetModal';
 import { LabeledInput } from '@/components/LabeledInput';
@@ -110,7 +110,7 @@ export default function TransactionsScreen() {
           manager_id: selectedManager,
           amount: amt,
           description: description.trim() || null,
-          created_at: new Date(entryDate).toISOString(),
+          created_at: toKyivISODate(entryDate),
         })
         .eq('id', editingTx.id);
       if (err) {
@@ -123,7 +123,7 @@ export default function TransactionsScreen() {
         manager_id: selectedManager,
         amount: amt,
         description: description.trim() || null,
-        created_at: new Date(entryDate).toISOString(),
+        created_at: toKyivISODate(entryDate),
       });
       if (err) {
         alertDialog('Ошибка', err.message);

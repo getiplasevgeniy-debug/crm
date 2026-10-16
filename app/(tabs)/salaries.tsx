@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { supabase, Manager, SalaryPayment } from '@/lib/supabase';
 import { colors } from '@/lib/theme';
-import { formatMoney, formatDate, currentMonthKey, getMonthRange, defaultDateForMonth } from '@/lib/format';
+import { formatMoney, formatDate, currentMonthKey, getMonthRange, defaultDateForMonth, toKyivISODate } from '@/lib/format';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SheetModal } from '@/components/SheetModal';
 import { LabeledInput } from '@/components/LabeledInput';
@@ -162,7 +162,7 @@ export default function SalariesScreen() {
       manager_id: payManager.manager.id,
       amount: amt,
       note: payNote.trim() || null,
-      created_at: new Date(payDate).toISOString(),
+      created_at: toKyivISODate(payDate),
     });
 
     if (err) {
