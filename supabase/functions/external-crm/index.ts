@@ -34,10 +34,6 @@ function getAuthInfo(request: Request): AuthInfo {
   }
 }
 
-function isAdmin(request: Request) {
-  return getAuthInfo(request).isAdmin;
-}
-
 function requireConfiguration() {
   if (!targetUrl || !targetServiceRoleKey || !currentUrl || !currentServiceRoleKey) {
     throw new Error('External CRM is not configured');
@@ -154,53 +150,40 @@ function dateRangeFromBody(body: Record<string, unknown>): { from?: string; to?:
   return { from, to };
 }
 
-function buildContactsPath(basePath: string, from?: string, to?: string): string {
-  let path = basePath;
-  if (from) path += `&created_at=gte.${encodeURIComponent(from)}`;
-  if (to) path += `&created_at=lt.${encodeURIComponent(to)}`;
-  return path;
+type LocalLead = {
+  external_agent_id: string;
+  external_contact_id: string;
+  application_date: string;
+};
+
+async function fetchLocalLeads(from?: string, to?: string, externalAgentId?: string): Promise<LocalLead[]> {
+  const params = new URLSearchParams({
+    select: 'external_agent_id,external_contact_id,application_date',
+    sync_status: 'eq.synced',
+    external_contact_id: 'not.is.null',
+    limit: '10000',
+  });
+  if (from) params.append('application_date', `gte.${from}`);
+  if (to) params.append('application_date', `lt.${to}`);
+  if (externalAgentId) params.set('external_agent_id', `eq.${externalAgentId}`);
+  const response = await fetch(`${currentUrl}/rest/v1/lead_submissions?${params.toString()}`, {
+    headers: {
+      apikey: currentServiceRoleKey!,
+      Authorization: `Bearer ${currentServiceRoleKey!}`,
+    },
+  });
+  if (!response.ok) throw new Error('Local lead statistics unavailable');
+  const rows = await response.json();
+  if (!Array.isArray(rows)) throw new Error('Invalid local lead statistics');
+  return rows.filter((row: LocalLead) => row.external_agent_id && row.external_contact_id);
 }
 
-async function analytics(body: Record<string, unknown>) {
-  requireConfiguration();
-  const { from, to } = dateRangeFromBody(body);
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  const effectiveFrom = from || today.toISOString();
-  let contactsPath = '/rest/v1/contacts?select=id,agent_id,status,created_at&limit=10000&order=created_at.desc';
-  contactsPath = buildContactsPath(contactsPath, effectiveFrom, to);
-  const [contacts, agents, history] = await Promise.all([
-    fetchAll(contactsPath),
-    fetchAll('/rest/v1/agents?select=id,name&status=eq.active&limit=1000'),
-    fetchStatusHistory(),
-  ]);
-  const agentNames = new Map<string, string>((agents || []).map((agent: { id: string; name: string }) => [agent.id, agent.name]));
-  const historyByContact = new Map<string, string[]>();
-  for (const event of history || []) {
-    if (typeof event.contact_id !== 'string' || typeof event.status !== 'string') continue;
-    const statuses = historyByContact.get(event.contact_id) || [];
-    if (!statuses.includes(event.status)) statuses.push(event.status);
-    historyByContact.set(event.contact_id, statuses);
-  }
-  const makeSummary = (agentId: string) => ({ agent_id: agentId, agent_name: agentNames.get(agentId) || 'Без агента', total: 0, statuses: {} as Record<string, number> });
-  const summaries = new Map<string, ReturnType<typeof makeSummary>>();
-  const totals = { total: 0, statuses: {} as Record<string, number> };
-  for (const contact of contacts || []) {
-    if (typeof contact.created_at !== 'string') continue;
-    const agentId = typeof contact.agent_id === 'string' && contact.agent_id ? contact.agent_id : 'unassigned';
-    const currentStatus = typeof contact.status === 'string' ? contact.status : '';
-    const statuses = historyByContact.get(contact.id) || (currentStatus ? [currentStatus] : []);
-    if (statuses.includes('Нет ответа')) continue;
-    const summary = summaries.get(agentId) || makeSummary(agentId);
-    summary.total += 1;
-    totals.total += 1;
-    for (const status of statuses) {
-      summary.statuses[status] = (summary.statuses[status] || 0) + 1;
-      totals.statuses[status] = (totals.statuses[status] || 0) + 1;
-    }
-    summaries.set(agentId, summary);
-  }
-  const addConversions = (summary: { total: number; statuses: Record<string, number> }) => ({
+function makeAnalyticsSummary(agentId: string, agentName: string) {
+  return { agent_id: agentId, agent_name: agentName, total: 0, statuses: {} as Record<string, number> };
+}
+
+function addConversions(summary: { total: number; statuses: Record<string, number> }) {
+  return {
     ...summary,
     in_work: summary.statuses['В работе'] || 0,
     deposits: summary.statuses['Депозит'] || 0,
@@ -208,8 +191,66 @@ async function analytics(body: Record<string, unknown>) {
     work_conversion: summary.total ? (summary.statuses['В работе'] || 0) / summary.total : 0,
     deposit_conversion: summary.total ? (summary.statuses['Депозит'] || 0) / summary.total : 0,
     invalid_conversion: summary.total ? (summary.statuses['Не валид'] || 0) / summary.total : 0,
-  });
-  return { totals: addConversions(totals), by_agent: Array.from(summaries.values()).map(addConversions).sort((a, b) => b.total - a.total) };
+  };
+}
+
+async function buildAnalytics(leads: LocalLead[], includeAllAgents: boolean) {
+  const agentIds = Array.from(new Set(leads.map((lead) => lead.external_agent_id)));
+  const [agents, history] = await Promise.all([
+    fetchAll('/rest/v1/agents?select=id,name&limit=1000'),
+    fetchStatusHistory(),
+  ]);
+  const agentNames = new Map<string, string>((agents || []).map((agent: { id: string; name: string }) => [agent.id, agent.name]));
+  const summaries = new Map<string, ReturnType<typeof makeAnalyticsSummary>>();
+  if (includeAllAgents) {
+    for (const agent of agents || []) {
+      if (typeof agent.id === 'string') summaries.set(agent.id, makeAnalyticsSummary(agent.id, agent.name || 'Без имени'));
+    }
+  }
+  const historyByContact = new Map<string, string[]>();
+  for (const event of history || []) {
+    if (typeof event.contact_id !== 'string' || typeof event.status !== 'string') continue;
+    const statuses = historyByContact.get(event.contact_id) || [];
+    if (!statuses.includes(event.status)) statuses.push(event.status);
+    historyByContact.set(event.contact_id, statuses);
+  }
+
+  const contactIds = Array.from(new Set(leads.map((lead) => lead.external_contact_id)));
+  if (contactIds.length > 0) {
+    const idFilter = contactIds.map((id) => encodeURIComponent(id)).join(',');
+    const contacts = await fetchAll(`/rest/v1/contacts?select=id,agent_id,status&limit=10000&id=in.(${idFilter})`);
+    const contactById = new Map<string, { agent_id?: string; status?: string }>(
+      (contacts || []).map((contact: { id: string; agent_id?: string; status?: string }) => [contact.id, contact]),
+    );
+    for (const lead of leads) {
+      const contact = contactById.get(lead.external_contact_id);
+      const agentId = lead.external_agent_id;
+      const agentName = agentNames.get(agentId) || 'Без агента';
+      const summary = summaries.get(agentId) || makeAnalyticsSummary(agentId, agentName);
+      const currentStatus = contact?.status || '';
+      const statuses = historyByContact.get(lead.external_contact_id) || (currentStatus ? [currentStatus] : []);
+      summary.total += 1;
+      for (const status of statuses) summary.statuses[status] = (summary.statuses[status] || 0) + 1;
+      summaries.set(agentId, summary);
+    }
+  }
+
+  const totals = makeAnalyticsSummary('all', 'Все агенты');
+  for (const summary of summaries.values()) {
+    totals.total += summary.total;
+    for (const [status, count] of Object.entries(summary.statuses)) totals.statuses[status] = (totals.statuses[status] || 0) + count;
+  }
+  return {
+    totals: addConversions(totals),
+    by_agent: Array.from(summaries.values()).filter((summary) => summary.total > 0 || includeAllAgents).map(addConversions).sort((a, b) => b.total - a.total),
+  };
+}
+
+async function analytics(body: Record<string, unknown>) {
+  requireConfiguration();
+  const { from, to } = dateRangeFromBody(body);
+  const leads = await fetchLocalLeads(from, to);
+  return buildAnalytics(leads, true);
 }
 
 async function findContact(body: Record<string, unknown>) {
@@ -252,7 +293,6 @@ async function myAnalytics(authInfo: AuthInfo, body: Record<string, unknown>) {
   requireConfiguration();
   if (!authInfo.userId) throw new Error('Not authenticated');
 
-  // Find manager's external_agent_id
   const mgrRes = await fetch(`${currentUrl}/rest/v1/managers?select=external_agent_id&auth_user_id=eq.${encodeURIComponent(authInfo.userId)}&limit=1`, {
     headers: {
       apikey: currentServiceRoleKey!,
@@ -265,51 +305,8 @@ async function myAnalytics(authInfo: AuthInfo, body: Record<string, unknown>) {
   if (!externalAgentId) throw new Error('Agent not linked to external CRM');
 
   const { from, to } = dateRangeFromBody(body);
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  const effectiveFrom = from || today.toISOString();
-  let contactsPath = `/rest/v1/contacts?select=id,agent_id,status,created_at&limit=10000&order=created_at.desc`;
-  contactsPath = buildContactsPath(contactsPath, effectiveFrom, to);
-  contactsPath += `&agent_id=eq.${encodeURIComponent(externalAgentId)}`;
-
-  const [contacts, agents, history] = await Promise.all([
-    fetchAll(contactsPath),
-    fetchAll('/rest/v1/agents?select=id,name&status=eq.active&limit=1000'),
-    fetchStatusHistory(),
-  ]);
-  const agentName = (agents || []).find((a: { id: string }) => a.id === externalAgentId)?.name || 'Моя статистика';
-
-  const historyByContact = new Map<string, string[]>();
-  for (const event of history || []) {
-    if (typeof event.contact_id !== 'string' || typeof event.status !== 'string') continue;
-    const statuses = historyByContact.get(event.contact_id) || [];
-    if (!statuses.includes(event.status)) statuses.push(event.status);
-    historyByContact.set(event.contact_id, statuses);
-  }
-
-  const summary = { agent_id: externalAgentId, agent_name: agentName, total: 0, statuses: {} as Record<string, number> };
-  for (const contact of contacts || []) {
-    if (typeof contact.created_at !== 'string') continue;
-    const currentStatus = typeof contact.status === 'string' ? contact.status : '';
-    const statuses = historyByContact.get(contact.id) || (currentStatus ? [currentStatus] : []);
-    if (statuses.includes('Нет ответа')) continue;
-    summary.total += 1;
-    for (const status of statuses) {
-      summary.statuses[status] = (summary.statuses[status] || 0) + 1;
-    }
-  }
-
-  const totals = { total: summary.total, statuses: { ...summary.statuses } };
-  const addConversions = (s: { total: number; statuses: Record<string, number> }) => ({
-    ...s,
-    in_work: s.statuses['В работе'] || 0,
-    deposits: s.statuses['Депозит'] || 0,
-    invalid: s.statuses['Не валид'] || 0,
-    work_conversion: s.total ? (s.statuses['В работе'] || 0) / s.total : 0,
-    deposit_conversion: s.total ? (s.statuses['Депозит'] || 0) / s.total : 0,
-    invalid_conversion: s.total ? (s.statuses['Не валид'] || 0) / s.total : 0,
-  });
-  return { totals: addConversions(totals), by_agent: [addConversions(summary)] };
+  const leads = await fetchLocalLeads(from, to, externalAgentId);
+  return buildAnalytics(leads, false);
 }
 
 Deno.serve(async (request) => {
