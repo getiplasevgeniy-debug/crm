@@ -13,6 +13,7 @@ import { ErrorBanner } from '@/components/ErrorBanner';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { MonthPicker } from '@/components/MonthPicker';
 import { DonutChart, DonutLegend, colorForStatus } from '@/components/DonutChart';
+import { LeadPullComparison } from '@/components/LeadPullComparison';
 import {
   fetchExternalAnalytics,
   fetchMyAnalytics,
@@ -155,6 +156,8 @@ export default function AnalyticsScreen() {
         {/* Admin: expenses + cost funnel */}
         {isAdmin && totals && !error ? (
           <>
+            {!isAllTime ? <LeadPullComparison monthKey={selectedMonth} /> : null}
+
             <View style={styles.expenseCard}>
               <View style={styles.expenseRow}>
                 <TrendingDown size={18} color={colors.error[400]} />
