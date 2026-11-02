@@ -8,7 +8,7 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
-import { supabase, Manager, SalaryPayment } from '@/lib/supabase';
+import { supabase, Manager, SalaryPayment, SalaryAdjustment } from '@/lib/supabase';
 import { colors } from '@/lib/theme';
 import { formatMoney, formatDate, currentMonthKey, getMonthRange, defaultDateForMonth, toKyivISODate } from '@/lib/format';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -19,7 +19,8 @@ import { EmptyState } from '@/components/EmptyState';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { MonthPicker } from '@/components/MonthPicker';
 import { Badge } from '@/components/Badge';
-import { Wallet, ChevronDown, ChevronUp, Check, LogOut, Trash2, Pencil } from 'lucide-react-native';
+import { ExtraPayoutModal } from '@/components/ExtraPayoutModal';
+import { Wallet, ChevronDown, ChevronUp, Check, LogOut, Trash2, Plus } from 'lucide-react-native';
 import { useAuth } from '@/lib/auth';
 import { confirmDialog, alertDialog } from '@/lib/confirm';
 
@@ -29,6 +30,8 @@ type SalaryCalc = {
   totalAmount: number;
   salaryFromPct: number;
   totalBonuses: number;
+  totalAdjustments: number;
+  adjustments: SalaryAdjustment[];
   totalPaid: number;
   owed: number;
 };
@@ -51,6 +54,9 @@ export default function SalariesScreen() {
   const [saving, setSaving] = useState(false);
   const [payDate, setPayDate] = useState('');
 
+  const [extraModalVisible, setExtraModalVisible] = useState(false);
+  const [extraManager, setExtraManager] = useState<Manager | null>(null);
+
   const fetchData = useCallback(async () => {
     setError(null);
     const { data: mgrData, error: mgrErr } = await supabase
@@ -69,10 +75,14 @@ export default function SalariesScreen() {
     const result: SalaryCalc[] = [];
 
     for (const m of managers) {
-      const [txRes, bnRes, payRes] = await Promise.all([
+      const [txRes, bnRes, payRes, adjRes] = await Promise.all([
         supabase.from('transactions').select('amount, created_at').eq('manager_id', m.id),
         supabase.from('bonuses').select('amount, created_at').eq('manager_id', m.id),
         supabase.from('salary_payments').select('amount, created_at').eq('manager_id', m.id),
+        supabase
+          .from('salary_adjustments')
+          .select('id, manager_id, amount, note, created_at')
+          .eq('manager_id', m.id),
       ]);
 
       const { start, end } = getMonthRange(selectedMonth);
@@ -82,11 +92,15 @@ export default function SalariesScreen() {
       const totalBonuses = (bnRes.data || [])
         .filter((b) => b.created_at >= start && b.created_at < end)
         .reduce((s, b) => s + Number(b.amount), 0);
+      const adjustments = ((adjRes.data || []) as SalaryAdjustment[]).filter(
+        (a) => a.created_at >= start && a.created_at < end,
+      );
+      const totalAdjustments = adjustments.reduce((s, a) => s + Number(a.amount), 0);
       const totalPaid = (payRes.data || [])
         .filter((p) => p.created_at >= start && p.created_at < end)
         .reduce((s, p) => s + Number(p.amount), 0);
       const salaryFromPct = (totalAmount * m.salary_percentage) / 100;
-      const owed = salaryFromPct + totalBonuses - totalPaid;
+      const owed = salaryFromPct + totalBonuses + totalAdjustments - totalPaid;
 
       result.push({
         manager: m,
@@ -96,6 +110,8 @@ export default function SalariesScreen() {
         totalAmount,
         salaryFromPct,
         totalBonuses,
+        totalAdjustments,
+        adjustments,
         totalPaid,
         owed,
       });
@@ -134,6 +150,22 @@ export default function SalariesScreen() {
       }
       fetchData();
     });
+  };
+
+  const handleDeleteAdjustment = (a: SalaryAdjustment, managerName: string) => {
+    confirmDialog('Удалить доп. выплату?', `${managerName}: ${formatMoney(Number(a.amount))}`, async () => {
+      const { error: err } = await supabase.from('salary_adjustments').delete().eq('id', a.id);
+      if (err) {
+        alertDialog('Ошибка', err.message);
+        return;
+      }
+      fetchData();
+    });
+  };
+
+  const openExtra = (item: SalaryCalc) => {
+    setExtraManager(item.manager);
+    setExtraModalVisible(true);
   };
 
   const onRefresh = () => {
@@ -216,9 +248,36 @@ export default function SalariesScreen() {
               value={formatMoney(item.salaryFromPct)}
             />
             <DetailRow label="Бонусы" value={`+ ${formatMoney(item.totalBonuses)}`} />
+            <DetailRow label="Доп. выплаты" value={`+ ${formatMoney(item.totalAdjustments)}`} />
             <DetailRow label="Выплачено" value={`- ${formatMoney(item.totalPaid)}`} />
             <View style={styles.divider} />
             <DetailRow label="Итого к выплате" value={formatMoney(item.owed)} bold />
+
+            {item.adjustments.map((a) => (
+              <View key={a.id} style={styles.adjRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.adjNote}>{a.note || 'Доп. выплата'}</Text>
+                  <Text style={styles.adjDate}>{formatDate(a.created_at)}</Text>
+                </View>
+                <Text style={styles.adjValue}>+ {formatMoney(Number(a.amount))}</Text>
+                {isAdmin ? (
+                  <TouchableOpacity
+                    onPress={() => handleDeleteAdjustment(a, item.manager.name)}
+                    hitSlop={10}
+                    style={styles.historyDelBtn}
+                  >
+                    <Trash2 size={14} color={colors.error[400]} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ))}
+
+            {isAdmin ? (
+              <TouchableOpacity style={styles.extraBtn} onPress={() => openExtra(item)} activeOpacity={0.8}>
+                <Plus size={16} color={colors.primary[400]} />
+                <Text style={styles.extraBtnText}>Доп. выплата</Text>
+              </TouchableOpacity>
+            ) : null}
 
             {hasDebt && isAdmin ? (
               <View>
@@ -299,6 +358,17 @@ export default function SalariesScreen() {
             </View>
           ) : null
         }
+      />
+
+      <ExtraPayoutModal
+        visible={extraModalVisible}
+        manager={extraManager}
+        month={selectedMonth}
+        onClose={() => setExtraModalVisible(false)}
+        onSaved={() => {
+          setExtraModalVisible(false);
+          fetchData();
+        }}
       />
 
       <SheetModal
@@ -542,6 +612,48 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
     fontSize: 14,
     color: colors.neutral[400],
+  },
+  adjRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.neutral[950],
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 6,
+  },
+  adjNote: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: colors.neutral[200],
+  },
+  adjDate: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: colors.neutral[500],
+    marginTop: 2,
+  },
+  adjValue: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: colors.accent[500],
+  },
+  extraBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.primary[700],
+    paddingVertical: 12,
+    marginTop: 12,
+  },
+  extraBtnText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    color: colors.primary[400],
   },
   summaryValue: {
     fontFamily: 'Inter-Bold',

@@ -42,6 +42,14 @@ export type SalaryPayment = {
   created_at: string;
 };
 
+export type SalaryAdjustment = {
+  id: string;
+  manager_id: string;
+  amount: number;
+  note: string | null;
+  created_at: string;
+};
+
 export type LedgerEntry = {
   id: string;
   type: 'income' | 'expense';
