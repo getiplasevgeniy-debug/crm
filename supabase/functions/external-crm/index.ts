@@ -449,6 +449,7 @@ Deno.serve(async (request) => {
     return json(result);
   } catch (error) {
     console.error('external CRM request failed', error);
-    return json({ error: 'Не удалось выполнить операцию с внешней CRM' }, 400);
+    const detail = error instanceof Error ? error.message : 'unknown error';
+    return json({ error: `Не удалось выполнить операцию со второй CRM: ${detail}` }, 400);
   }
 });

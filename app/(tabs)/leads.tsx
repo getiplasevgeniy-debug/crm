@@ -28,8 +28,10 @@ export default function LeadsScreen() {
     setError(null);
     try {
       setAgents(await fetchExternalAgents());
-    } catch {
-      setError('Не удалось загрузить агентов из второй CRM. Проверьте подключение.');
+    } catch (err) {
+      setError(err instanceof Error && err.message
+        ? `Не удалось загрузить агентов: ${err.message}`
+        : 'Не удалось загрузить агентов из второй CRM. Проверьте подключение.');
     } finally {
       setLoading(false);
     }
