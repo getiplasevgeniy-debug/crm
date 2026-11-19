@@ -166,7 +166,11 @@ async function syncLead(body: Record<string, unknown>) {
     headers: { ...targetHeaders(), Prefer: 'return=representation' },
     body: JSON.stringify(contact),
   });
-  if (!response.ok) throw new Error('Target CRM rejected the lead');
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    const detail = body.slice(0, 300).replace(/\s+/g, ' ').trim();
+    throw new Error(`Вторая CRM вернула ${response.status}${detail ? `: ${detail}` : ''}`);
+  }
   const rows = await response.json();
   const externalContactId = rows?.[0]?.id;
   if (typeof externalContactId !== 'string') throw new Error('Target CRM returned an invalid contact');

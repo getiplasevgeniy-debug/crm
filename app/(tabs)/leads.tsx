@@ -9,10 +9,23 @@ import { useAuth } from '@/lib/auth';
 import { syncLead, ExternalAgent } from '@/lib/externalCrm';
 import { colors } from '@/lib/theme';
 import { supabase } from '@/lib/supabase';
+import { formatDate } from '@/lib/format';
+
+type FailedLead = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  lost_with: string | null;
+  application_date: string;
+  external_agent_id: string;
+};
 
 export default function LeadsScreen() {
   const { role, signOut } = useAuth();
   const [agents, setAgents] = useState<ExternalAgent[]>([]);
+  const [failedLeads, setFailedLeads] = useState<FailedLead[]>([]);
+  const [retryingLeadId, setRetryingLeadId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -45,9 +58,26 @@ export default function LeadsScreen() {
     setLoading(false);
   }, []);
 
+  const loadFailedLeads = useCallback(async () => {
+    const { data, error: failedLeadsError } = await supabase
+      .from('lead_submissions')
+      .select('id, name, email, phone, lost_with, application_date, external_agent_id')
+      .eq('sync_status', 'failed')
+      .not('external_agent_id', 'is', null)
+      .order('application_date', { ascending: false });
+
+    if (failedLeadsError) {
+      setError(`Ошибка загрузки неотправленных заявок: ${failedLeadsError.message}`);
+      return;
+    }
+
+    setFailedLeads((data || []) as FailedLead[]);
+  }, []);
+
   useEffect(() => {
     loadAgents();
-  }, [loadAgents]);
+    loadFailedLeads();
+  }, [loadAgents, loadFailedLeads]);
 
   const resetForm = () => {
     setName('');
@@ -56,6 +86,40 @@ export default function LeadsScreen() {
     setLostWith('');
     setApplicationDate(new Date().toISOString().slice(0, 10));
     setSelectedAgentId('');
+  };
+
+  const retryFailedLead = async (lead: FailedLead) => {
+    const agent = agents.find((item) => item.id === lead.external_agent_id);
+    if (!agent) {
+      setError(`Для заявки «${lead.name}» не найден подключённый менеджер.`);
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    setRetryingLeadId(lead.id);
+    try {
+      await syncLead({
+        local_lead_id: lead.id,
+        name: lead.name,
+        email: lead.email,
+        phone: lead.phone,
+        lost_with: lead.lost_with,
+        application_date: lead.application_date,
+        external_agent_id: lead.external_agent_id,
+      });
+      setFailedLeads((current) => current.filter((item) => item.id !== lead.id));
+      setSuccess(`Заявка «${lead.name}» повторно отправлена в CRM.`);
+    } catch (syncError) {
+      const message = syncError instanceof Error ? syncError.message : 'Неизвестная ошибка';
+      await supabase
+        .from('lead_submissions')
+        .update({ sync_status: 'failed', sync_error: message })
+        .eq('id', lead.id);
+      setError(`Заявка «${lead.name}» не отправлена: ${message}`);
+    } finally {
+      setRetryingLeadId(null);
+    }
   };
 
   const handleSubmit = async () => {
@@ -113,7 +177,9 @@ export default function LeadsScreen() {
         .from('lead_submissions')
         .update({ sync_status: 'failed', sync_error: syncError instanceof Error ? syncError.message : 'sync failed' })
         .eq('id', lead.id);
-      setError('Заявка сохранена, но не отправлена во вторую CRM. Проверьте подключение и повторите позже.');
+      const message = syncError instanceof Error ? syncError.message : 'Неизвестная ошибка';
+      setError(`Заявка сохранена, но не отправлена во вторую CRM: ${message}`);
+      await loadFailedLeads();
     } finally {
       setSaving(false);
     }
@@ -141,6 +207,26 @@ export default function LeadsScreen() {
           <View style={styles.successBanner}>
             <CheckCircle2 size={18} color={colors.accent[400]} />
             <Text style={styles.successText}>{success}</Text>
+          </View>
+        ) : null}
+        {failedLeads.length > 0 ? (
+          <View style={styles.failedCard}>
+            <Text style={styles.failedTitle}>Неотправленные заявки</Text>
+            <Text style={styles.failedText}>Они не попали в статистику. Повторите передачу после восстановления второй CRM.</Text>
+            {failedLeads.map((lead) => (
+              <View key={lead.id} style={styles.failedRow}>
+                <View style={styles.failedInfo}>
+                  <Text style={styles.failedName}>{lead.name}</Text>
+                  <Text style={styles.failedDate}>{formatDate(lead.application_date)}</Text>
+                </View>
+                <ActionButton
+                  label="Повторить передачу"
+                  onPress={() => retryFailedLead(lead)}
+                  loading={retryingLeadId === lead.id}
+                  disabled={retryingLeadId !== null && retryingLeadId !== lead.id}
+                />
+              </View>
+            ))}
           </View>
         ) : null}
         <View style={styles.introCard}>
@@ -205,5 +291,12 @@ const styles = StyleSheet.create({
   empty: { fontFamily: 'Inter-Regular', fontSize: 14, color: colors.neutral[400], marginBottom: 20 },
   successBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, marginBottom: 12, borderRadius: 12, backgroundColor: colors.accent[700] },
   successText: { flex: 1, fontFamily: 'Inter-Medium', fontSize: 13, color: colors.neutral[0] },
+  failedCard: { padding: 16, marginBottom: 20, borderRadius: 16, backgroundColor: colors.neutral[900], borderWidth: 1, borderColor: colors.error[600] },
+  failedTitle: { fontFamily: 'Inter-SemiBold', fontSize: 16, color: colors.neutral[0], marginBottom: 6 },
+  failedText: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 19, color: colors.neutral[200], marginBottom: 14 },
+  failedRow: { paddingTop: 12, marginTop: 12, borderTopWidth: 1, borderTopColor: colors.error[600] },
+  failedInfo: { marginBottom: 10 },
+  failedName: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: colors.neutral[0] },
+  failedDate: { fontFamily: 'Inter-Regular', fontSize: 12, color: colors.neutral[300], marginTop: 3 },
   bottomSpace: { height: 24 },
 });
