@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { CheckCircle2, LogOut, UserPlus } from 'lucide-react-native';
+import { CheckCircle2, LogOut, Trash2, UserPlus } from 'lucide-react-native';
 import { ActionButton } from '@/components/ActionButton';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { LabeledInput } from '@/components/LabeledInput';
@@ -10,6 +10,7 @@ import { syncLead, ExternalAgent } from '@/lib/externalCrm';
 import { colors } from '@/lib/theme';
 import { supabase } from '@/lib/supabase';
 import { formatDate } from '@/lib/format';
+import { confirmDialog } from '@/lib/confirm';
 
 type FailedLead = {
   id: string;
@@ -26,6 +27,7 @@ export default function LeadsScreen() {
   const [agents, setAgents] = useState<ExternalAgent[]>([]);
   const [failedLeads, setFailedLeads] = useState<FailedLead[]>([]);
   const [retryingLeadId, setRetryingLeadId] = useState<string | null>(null);
+  const [deletingLeadId, setDeletingLeadId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -120,6 +122,34 @@ export default function LeadsScreen() {
     } finally {
       setRetryingLeadId(null);
     }
+  };
+
+  const deleteFailedLead = async (lead: FailedLead) => {
+    setError(null);
+    setSuccess(null);
+    setDeletingLeadId(lead.id);
+    const { error: deleteError } = await supabase
+      .from('lead_submissions')
+      .delete()
+      .eq('id', lead.id)
+      .eq('sync_status', 'failed')
+      .is('external_contact_id', null);
+
+    if (deleteError) {
+      setError(`Не удалось удалить заявку «${lead.name}»: ${deleteError.message}`);
+    } else {
+      setFailedLeads((current) => current.filter((item) => item.id !== lead.id));
+      setSuccess(`Заявка «${lead.name}» удалена.`);
+    }
+    setDeletingLeadId(null);
+  };
+
+  const confirmDeleteFailedLead = (lead: FailedLead) => {
+    confirmDialog(
+      'Удалить заявку?',
+      `Заявка «${lead.name}» не была передана во вторую CRM и будет удалена из списка.`,
+      () => { void deleteFailedLead(lead); },
+    );
   };
 
   const handleSubmit = async () => {
@@ -223,8 +253,16 @@ export default function LeadsScreen() {
                   label="Повторить передачу"
                   onPress={() => retryFailedLead(lead)}
                   loading={retryingLeadId === lead.id}
-                  disabled={retryingLeadId !== null && retryingLeadId !== lead.id}
+                  disabled={retryingLeadId !== null || deletingLeadId !== null}
                 />
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={() => confirmDeleteFailedLead(lead)}
+                  disabled={retryingLeadId !== null || deletingLeadId !== null}
+                  activeOpacity={0.8}
+                >
+                  {deletingLeadId === lead.id ? <Text style={styles.deleteLabel}>Удаление...</Text> : <><Trash2 size={16} color={colors.error[500]} /><Text style={styles.deleteLabel}>Удалить ошибочную заявку</Text></>}
+                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -298,5 +336,7 @@ const styles = StyleSheet.create({
   failedInfo: { marginBottom: 10 },
   failedName: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: colors.neutral[0] },
   failedDate: { fontFamily: 'Inter-Regular', fontSize: 12, color: colors.neutral[300], marginTop: 3 },
+  deleteButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, marginTop: 8, borderRadius: 12, borderWidth: 1, borderColor: colors.error[500] },
+  deleteLabel: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: colors.error[500] },
   bottomSpace: { height: 24 },
 });
