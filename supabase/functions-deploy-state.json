@@ -1,0 +1,13 @@
+{
+  "projectId": "69139948",
+  "functions": {
+    "create-manager": {
+      "hasChanged": false,
+      "hash": "d58111552a0b8b9a535b17cb504fc9e06f0fdd049a72c8e72e1b57e3460a85fc"
+    },
+    "external-crm": {
+      "hasChanged": false,
+      "hash": "896b5e19c88a6a5b4a232443b91bccba659266d24dde4ba398316f24676b2658"
+    }
+  }
+}

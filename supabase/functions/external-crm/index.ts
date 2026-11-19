@@ -307,15 +307,23 @@ async function buildAnalytics(leads: LocalLead[], includeAllAgents: boolean) {
 
   const contactIds = Array.from(new Set(leads.map((lead) => lead.external_contact_id)));
   const contactById = new Map<string, { agent_id?: string; status?: string }>();
-  if (contactIds.length > 0) {
-    const idFilter = contactIds.map((id) => encodeURIComponent(id)).join(',');
-    const contacts = await fetchAll(`/rest/v1/contacts?select=id,agent_id,status&limit=10000&id=in.(${idFilter})`);
+  // Long "id in (...)" URLs fail once the lead count grows; fetch in fixed-size chunks.
+  const chunkSize = 200;
+  for (let i = 0; i < contactIds.length; i += chunkSize) {
+    const chunk = contactIds.slice(i, i + chunkSize);
+    const idFilter = chunk.map((id) => encodeURIComponent(id)).join(',');
+    const contacts = await fetchAll(`/rest/v1/contacts?select=id,agent_id,status&limit=10000&id=in.(${idFilter})`).catch((err) => {
+      console.error('analytics: contact chunk fetch failed, continuing', err);
+      return [] as Array<{ id: string; agent_id?: string; status?: string }>;
+    });
     for (const contact of (contacts || []) as Array<{ id: string; agent_id?: string; status?: string }>) {
       contactById.set(contact.id, contact);
     }
   }
 
-  await purgeOrphanedLeads(leads, contactById);
+  await purgeOrphanedLeads(leads, contactById).catch((err) =>
+    console.error('analytics: purge failed, continuing', err)
+  );
   const validLeads = leads.filter((lead) => contactById.has(lead.external_contact_id));
 
   for (const lead of validLeads) {
