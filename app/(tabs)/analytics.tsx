@@ -88,8 +88,10 @@ export default function AnalyticsScreen() {
         const analytics = await fetchMyAnalytics(from, to);
         setData(analytics);
       }
-    } catch {
-      setError('Не удалось загрузить аналитику. Проверьте подключение.');
+    } catch (err) {
+      setError(err instanceof Error && err.message
+        ? `Не удалось загрузить аналитику: ${err.message}`
+        : 'Не удалось загрузить аналитику. Проверьте подключение.');
     } finally {
       setLoading(false);
       setRefreshing(false);

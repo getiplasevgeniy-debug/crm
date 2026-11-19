@@ -182,7 +182,11 @@ async function syncLead(body: Record<string, unknown>) {
 
 async function fetchAll(path: string) {
   const response = await fetch(`${targetUrl}${path}`, { headers: targetHeaders() });
-  if (!response.ok) throw new Error('Target CRM analytics unavailable');
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    const detail = body.slice(0, 300).replace(/\s+/g, ' ').trim();
+    throw new Error(`Вторая CRM вернула ${response.status}${detail ? `: ${detail}` : ''}`);
+  }
   return response.json();
 }
 
