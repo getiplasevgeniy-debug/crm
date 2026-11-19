@@ -6,7 +6,7 @@ import { ErrorBanner } from '@/components/ErrorBanner';
 import { LabeledInput } from '@/components/LabeledInput';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useAuth } from '@/lib/auth';
-import { fetchExternalAgents, syncLead, ExternalAgent } from '@/lib/externalCrm';
+import { syncLead, ExternalAgent } from '@/lib/externalCrm';
 import { colors } from '@/lib/theme';
 import { supabase } from '@/lib/supabase';
 
@@ -26,15 +26,23 @@ export default function LeadsScreen() {
 
   const loadAgents = useCallback(async () => {
     setError(null);
-    try {
-      setAgents(await fetchExternalAgents());
-    } catch (err) {
-      setError(err instanceof Error && err.message
-        ? `Ошибка загрузки агентов: ${err.message}`
-        : 'Ошибка загрузки агентов: неизвестная ошибка.');
-    } finally {
-      setLoading(false);
+    const { data, error: managersError } = await supabase
+      .from('managers')
+      .select('name, email, external_agent_id')
+      .not('external_agent_id', 'is', null)
+      .order('name');
+
+    if (managersError) {
+      setError(`Ошибка загрузки агентов: ${managersError.message}`);
+    } else {
+      setAgents((data || []).map((manager) => ({
+        id: manager.external_agent_id as string,
+        name: manager.name,
+        email: manager.email,
+        role: 'agent',
+      })));
     }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -139,7 +147,7 @@ export default function LeadsScreen() {
           <UserPlus size={22} color={colors.primary[300]} />
           <View style={styles.introCopy}>
             <Text style={styles.introTitle}>Передать нового клиента</Text>
-            <Text style={styles.introText}>Заполните данные и выберите агента из второй CRM. Клиент сразу появится в его списке.</Text>
+            <Text style={styles.introText}>Заполните данные и выберите менеджера. Клиент сразу появится в его списке во второй CRM.</Text>
           </View>
         </View>
         <LabeledInput label="Имя и фамилия *" value={name} onChangeText={setName} placeholder="Иван Иванов" />
@@ -148,9 +156,9 @@ export default function LeadsScreen() {
         <LabeledInput label="С кем потерял" value={lostWith} onChangeText={setLostWith} placeholder="Необязательно" />
         <LabeledInput label="Дата заявки *" value={applicationDate} onChangeText={setApplicationDate} datePicker />
 
-        <Text style={styles.label}>Назначить агента *</Text>
+        <Text style={styles.label}>Назначить менеджера *</Text>
         {agents.length === 0 && !loading ? (
-          <Text style={styles.empty}>Нет активных агентов во второй CRM.</Text>
+          <Text style={styles.empty}>Нет менеджеров с подключённой второй CRM.</Text>
         ) : (
           <View style={styles.agentList}>
             {agents.map((agent) => {

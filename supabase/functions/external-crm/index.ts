@@ -287,12 +287,31 @@ async function purgeOrphanedLeads(leads: LocalLead[], contactById: Map<string, u
   }
 }
 
+async function fetchLocalAgents(): Promise<Array<{ id: string; name: string }>> {
+  const response = await fetch(`${currentUrl}/rest/v1/managers?select=name,external_agent_id&external_agent_id=not.is.null&order=name.asc`, {
+    headers: {
+      apikey: currentServiceRoleKey!,
+      Authorization: `Bearer ${currentServiceRoleKey!}`,
+    },
+  });
+  if (!response.ok) throw new Error('Не удалось загрузить менеджеров текущей CRM');
+  const rows = await response.json();
+  if (!Array.isArray(rows)) throw new Error('Текущая CRM вернула некорректный список менеджеров');
+  return rows
+    .filter((row: { external_agent_id?: unknown; name?: unknown }) =>
+      typeof row.external_agent_id === 'string' && isRealAgent(typeof row.name === 'string' ? row.name : null),
+    )
+    .map((row: { external_agent_id: string; name: string }) => ({
+      id: row.external_agent_id,
+      name: row.name,
+    }));
+}
+
 async function buildAnalytics(leads: LocalLead[], includeAllAgents: boolean) {
-  const [rawAgents, history] = await Promise.all([
-    fetchAll('/rest/v1/agents?select=id,name&limit=1000'),
+  const [agents, history] = await Promise.all([
+    fetchLocalAgents(),
     fetchStatusHistory(),
   ]);
-  const agents = (rawAgents || []).filter((agent: { id: string; name?: string }) => isRealAgent(agent.name));
   const agentIds = Array.from(new Set(leads.map((lead) => lead.external_agent_id)));
   const agentNames = new Map<string, string>(agents.map((agent: { id: string; name: string }) => [agent.id, agent.name]));
   const summaries = new Map<string, ReturnType<typeof makeAnalyticsSummary>>();
