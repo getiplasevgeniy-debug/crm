@@ -50,12 +50,24 @@ async function callExternalCrm(body: Record<string, unknown>) {
     },
     body: JSON.stringify(body),
   });
-  const result = await response.json().catch(() => null);
+  const responseText = await response.text();
+  let result: Record<string, unknown> | unknown[] | null = null;
+  try {
+    result = responseText ? JSON.parse(responseText) : null;
+  } catch {
+    result = null;
+  }
   if (!response.ok || !result) {
-    const message = result?.error || 'Не удалось связаться с внешней CRM';
-    throw new Error(message === 'Agent not linked to external CRM'
+    const rawMessage = typeof result === 'object' && result && !Array.isArray(result) && typeof result.error === 'string'
+      ? result.error
+      : responseText || 'Пустой ответ сервера';
+    const message = `Код ${response.status}: ${rawMessage}`;
+    throw new Error(rawMessage === 'Agent not linked to external CRM'
       ? 'Ваш профиль ещё не привязан к агенту во внешней CRM. Обратитесь к администратору.'
       : message);
+  }
+  if (typeof result === 'object' && result && !Array.isArray(result) && typeof result.error === 'string') {
+    throw new Error(`Код ${response.status}: ${result.error}`);
   }
   return result;
 }
@@ -83,7 +95,7 @@ export async function fetchMyAnalytics(from?: string, to?: string): Promise<Exte
   if (from) payload.from = from;
   if (to) payload.to = to;
   const result = await callExternalCrm(payload);
-  if (!result || typeof result !== 'object' || !Array.isArray(result.by_agent))
+  if (!result || Array.isArray(result) || !Array.isArray(result.by_agent))
     throw new Error('Внешняя CRM вернула некорректную аналитику');
   return result as ExternalAnalyticsResponse;
 }
@@ -93,7 +105,7 @@ export async function fetchExternalAnalytics(from?: string, to?: string): Promis
   if (from) payload.from = from;
   if (to) payload.to = to;
   const result = await callExternalCrm(payload);
-  if (!result || typeof result !== 'object' || !Array.isArray(result.by_agent))
+  if (!result || Array.isArray(result) || !Array.isArray(result.by_agent))
     throw new Error('Внешняя CRM вернула некорректную аналитику');
   return result as ExternalAnalyticsResponse;
 }
