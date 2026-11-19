@@ -281,16 +281,6 @@ function isRealAgent(name: string | undefined | null): boolean {
   return lower !== 'админ' && lower !== 'admin' && lower !== 'administrator';
 }
 
-async function purgeOrphanedLeads(leads: LocalLead[], contactById: Map<string, unknown>): Promise<void> {
-  const orphans = leads.filter((lead) => !contactById.has(lead.external_contact_id));
-  for (const orphan of orphans) {
-    await fetch(`${currentUrl}/rest/v1/lead_submissions?external_contact_id=eq.${encodeURIComponent(orphan.external_contact_id)}`, {
-      method: 'DELETE',
-      headers: { apikey: currentServiceRoleKey!, Authorization: `Bearer ${currentServiceRoleKey!}` },
-    });
-  }
-}
-
 async function fetchLocalAgents(): Promise<Array<{ id: string; name: string }>> {
   const response = await fetch(`${currentUrl}/rest/v1/managers?select=name,external_agent_id&external_agent_id=not.is.null&order=name.asc`, {
     headers: {
@@ -339,18 +329,12 @@ async function buildAnalytics(leads: LocalLead[], includeAllAgents: boolean) {
   for (let i = 0; i < contactIds.length; i += chunkSize) {
     const chunk = contactIds.slice(i, i + chunkSize);
     const idFilter = chunk.map((id) => encodeURIComponent(id)).join(',');
-    const contacts = await fetchAll(`/rest/v1/contacts?select=id,agent_id,status&limit=10000&id=in.(${idFilter})`).catch((err) => {
-      console.error('analytics: contact chunk fetch failed, continuing', err);
-      return [] as Array<{ id: string; agent_id?: string; status?: string }>;
-    });
+    const contacts = await fetchAll(`/rest/v1/contacts?select=id,agent_id,status&limit=10000&id=in.(${idFilter})`);
     for (const contact of (contacts || []) as Array<{ id: string; agent_id?: string; status?: string }>) {
       contactById.set(contact.id, contact);
     }
   }
 
-  await purgeOrphanedLeads(leads, contactById).catch((err) =>
-    console.error('analytics: purge failed, continuing', err)
-  );
   const validLeads = leads.filter((lead) => contactById.has(lead.external_contact_id));
 
   for (const lead of validLeads) {
