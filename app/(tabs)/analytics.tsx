@@ -146,7 +146,7 @@ export default function AnalyticsScreen() {
         <MonthPicker
           value={selectedMonth}
           onChange={setSelectedMonth}
-          allowAllTime
+          allowAllTime={isAdmin}
           monthsCount={24}
         />
 
