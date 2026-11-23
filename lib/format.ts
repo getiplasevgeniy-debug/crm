@@ -75,6 +75,19 @@ export const generateMonthKeys = (count: number): string[] => {
   return keys;
 };
 
+export const getKyivToday = (): string => {
+  return toKyivISO(getKyivDate()).slice(0, 10);
+};
+
+export const formatDueDate = (dateStr: string): string => {
+  const d = new Date(`${dateStr}T00:00:00`);
+  return d.toLocaleDateString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+};
+
 export const toKyivISODate = (dateStr: string): string => {
   const d = new Date(dateStr);
   return toKyivISO(d);

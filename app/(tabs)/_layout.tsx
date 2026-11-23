@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Users, ArrowDownCircle, Gift, Wallet, BarChart3, UserPlus, LineChart, UsersRound } from 'lucide-react-native';
+import { Users, ArrowDownCircle, Gift, Wallet, BarChart3, UserPlus, LineChart, UsersRound, Bell } from 'lucide-react-native';
 import { colors } from '@/lib/theme';
 import { useAuth } from '@/lib/auth';
 
@@ -95,6 +95,17 @@ export default function TabLayout() {
           tabBarIcon: ({ size, color }) => <Wallet size={size} color={color} />,
         }}
       />
+      {isAdmin ? (
+        <Tabs.Screen
+          name="reminders"
+          options={{
+            title: 'Напоминания',
+            tabBarIcon: ({ size, color }) => <Bell size={size} color={color} />,
+          }}
+        />
+      ) : (
+        <Tabs.Screen name="reminders" options={{ href: null }} />
+      )}
       {isAdmin ? (
         <Tabs.Screen
           name="audit"
