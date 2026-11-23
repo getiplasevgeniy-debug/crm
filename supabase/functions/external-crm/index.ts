@@ -194,7 +194,6 @@ async function syncLead(body: Record<string, unknown>) {
     status: 'Новый',
     agent_id: agentId,
     created_at: applicationDate,
-    updated_at: applicationDate,
     notes: lostWith ? `С кем потерял: ${lostWith}` : null,
   };
 
