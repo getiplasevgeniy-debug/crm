@@ -8,6 +8,7 @@ const corsHeaders = {
 
 const targetUrl = Deno.env.get('TARGET_SUPABASE_URL');
 const targetServiceRoleKey = Deno.env.get('TARGET_SUPABASE_SERVICE_ROLE_KEY');
+const targetAnonKey = Deno.env.get('TARGET_SUPABASE_ANON_KEY') || targetServiceRoleKey;
 const currentUrl = Deno.env.get('SUPABASE_URL');
 const currentServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 const vapidSubject = Deno.env.get('VAPID_SUBJECT') || 'mailto:admin@example.com';
@@ -38,7 +39,7 @@ function getAuthInfo(request: Request): AuthInfo {
 }
 
 function requireConfiguration() {
-  if (!targetUrl || !targetServiceRoleKey || !currentUrl || !currentServiceRoleKey) {
+  if (!targetUrl || !targetServiceRoleKey || !targetAnonKey || !currentUrl || !currentServiceRoleKey) {
     throw new Error('External CRM is not configured');
   }
 }
@@ -49,6 +50,40 @@ function targetHeaders() {
     Authorization: `Bearer ${targetServiceRoleKey!}`,
     'Content-Type': 'application/json',
   };
+}
+
+function crmDataHeaders() {
+  return {
+    apikey: targetAnonKey!,
+    'Content-Type': 'application/json',
+    'X-CRM-SERVER-KEY': targetServiceRoleKey!,
+  };
+}
+
+async function callCrmData(body: Record<string, unknown>): Promise<unknown[]> {
+  const response = await fetch(`${targetUrl}/functions/v1/crm-data`, {
+    method: 'POST',
+    headers: crmDataHeaders(),
+    body: JSON.stringify(body),
+  });
+  const responseText = await response.text().catch(() => '');
+  let result: { data?: unknown; error?: unknown } | null = null;
+  try {
+    result = responseText ? JSON.parse(responseText) : null;
+  } catch {
+    result = null;
+  }
+  if (!response.ok || !result) {
+    const detail = responseText.slice(0, 300).replace(/\s+/g, ' ').trim();
+    throw new Error(`Вторая CRM вернула ${response.status}${detail ? `: ${detail}` : ''}`);
+  }
+  if (result.error) {
+    throw new Error(`Вторая CRM отклонила запрос: ${String(result.error)}`);
+  }
+  if (!Array.isArray(result.data)) {
+    throw new Error('Вторая CRM вернула некорректный ответ');
+  }
+  return result.data;
 }
 
 async function getAppSetting(key: string): Promise<string | null> {
@@ -161,17 +196,11 @@ async function syncLead(body: Record<string, unknown>) {
     notes: lostWith ? `С кем потерял: ${lostWith}` : null,
   };
 
-  const response = await fetch(`${targetUrl}/rest/v1/contacts`, {
-    method: 'POST',
-    headers: { ...targetHeaders(), Prefer: 'return=representation' },
-    body: JSON.stringify(contact),
+  const rows = await callCrmData({
+    op: 'insert',
+    table: 'contacts',
+    values: contact,
   });
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    const detail = body.slice(0, 300).replace(/\s+/g, ' ').trim();
-    throw new Error(`Вторая CRM вернула ${response.status}${detail ? `: ${detail}` : ''}`);
-  }
-  const rows = await response.json();
   const externalContactId = rows?.[0]?.id;
   if (typeof externalContactId !== 'string') throw new Error('Target CRM returned an invalid contact');
 
@@ -182,16 +211,6 @@ async function syncLead(body: Record<string, unknown>) {
   });
   await notifyAgentNewLead(agentId, name).catch((err) => console.error('push notification failed:', err));
   return { external_contact_id: externalContactId };
-}
-
-async function fetchAll(path: string) {
-  const response = await fetch(`${targetUrl}${path}`, { headers: targetHeaders() });
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    const detail = body.slice(0, 300).replace(/\s+/g, ' ').trim();
-    throw new Error(`Вторая CRM вернула ${response.status}${detail ? `: ${detail}` : ''}`);
-  }
-  return response.json();
 }
 
 async function fetchStatusHistory(): Promise<Array<{ contact_id: string; status: string }>> {
@@ -215,7 +234,11 @@ async function fetchStatusHistory(): Promise<Array<{ contact_id: string; status:
 
 async function listAgents() {
   requireConfiguration();
-  const agents = await fetchAll('/rest/v1/agents?select=id,name,email,role,status&order=name.asc&limit=1000');
+  const agents = await callCrmData({
+    op: 'select',
+    table: 'agents',
+    select: 'id,name,email,role,status',
+  });
   if (!Array.isArray(agents)) throw new Error('Target CRM returned invalid agents');
   return agents.filter((a: { status?: string }) => a.status === 'active' || !a.status).map((a: { id: string; name: string; email?: string; role?: string }) => ({
     id: a.id,
@@ -328,8 +351,12 @@ async function buildAnalytics(leads: LocalLead[], includeAllAgents: boolean) {
   const chunkSize = 200;
   for (let i = 0; i < contactIds.length; i += chunkSize) {
     const chunk = contactIds.slice(i, i + chunkSize);
-    const idFilter = chunk.map((id) => encodeURIComponent(id)).join(',');
-    const contacts = await fetchAll(`/rest/v1/contacts?select=id,agent_id,status&limit=10000&id=in.(${idFilter})`);
+    const contacts = await callCrmData({
+      op: 'select',
+      table: 'contacts',
+      select: 'id,agent_id,status',
+      filters: [{ col: 'id', op: 'in', value: chunk }],
+    });
     for (const contact of (contacts || []) as Array<{ id: string; agent_id?: string; status?: string }>) {
       contactById.set(contact.id, contact);
     }
@@ -372,11 +399,21 @@ async function findContact(body: Record<string, unknown>) {
   requireConfiguration();
   const name = typeof body.name === 'string' ? body.name.trim() : '';
   if (!name) throw new Error('name required');
-  const encoded = encodeURIComponent(`%${name}%`);
-  const contacts = await fetchAll(`/rest/v1/contacts?select=id,name,agent_id,status,created_at&name=ilike.${encoded}&limit=20&order=created_at.desc`);
-  const agents = await fetchAll('/rest/v1/agents?select=id,name&limit=1000');
+  const contacts = await callCrmData({
+    op: 'select',
+    table: 'contacts',
+    select: 'id,name,agent_id,status,created_at',
+  });
+  const agents = await callCrmData({
+    op: 'select',
+    table: 'agents',
+    select: 'id,name',
+  });
   const agentMap = new Map<string, string>((agents || []).map((a: { id: string; name: string }) => [a.id, a.name]));
-  return (contacts || []).map((c: { id: string; name: string; agent_id: string; status: string; created_at: string }) => ({
+  return (contacts || [])
+    .filter((c: { name?: string }) => typeof c.name === 'string' && c.name.toLowerCase().includes(name.toLowerCase()))
+    .slice(0, 20)
+    .map((c: { id: string; name: string; agent_id: string; status: string; created_at: string }) => ({
     id: c.id,
     name: c.name,
     agent_id: c.agent_id,
