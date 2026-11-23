@@ -234,6 +234,38 @@ async function fetchStatusHistory(): Promise<Array<{ contact_id: string; status:
   return [];
 }
 
+async function checkConnection() {
+  if (!targetUrl) {
+    return { ok: false, status: 0, error: 'Адрес второй CRM (TARGET_SUPABASE_URL) не настроен' };
+  }
+  if (!targetCrmIntegrationKey) {
+    return { ok: false, status: 0, error: 'Ключ доступа ко второй CRM (TARGET_CRM_INTEGRATION_KEY) не настроен' };
+  }
+  const response = await fetch(`${targetUrl}/functions/v1/crm-data`, {
+    method: 'POST',
+    headers: crmDataHeaders(),
+    body: JSON.stringify({ op: 'select', table: 'agents', select: 'id' }),
+  });
+  const responseText = await response.text().catch(() => '');
+  if (!response.ok) {
+    const detail = responseText.slice(0, 300).replace(/\s+/g, ' ').trim();
+    return { ok: false, status: response.status, error: `Вторая CRM вернула ${response.status}${detail ? `: ${detail}` : ''}` };
+  }
+  let result: { data?: unknown; error?: unknown } | null = null;
+  try {
+    result = responseText ? JSON.parse(responseText) : null;
+  } catch {
+    result = null;
+  }
+  if (result?.error) {
+    return { ok: false, status: response.status, error: `Вторая CRM отклонила запрос: ${String(result.error)}` };
+  }
+  if (!result || !Array.isArray(result.data)) {
+    return { ok: false, status: response.status, error: 'Вторая CRM вернула некорректный ответ' };
+  }
+  return { ok: true, status: response.status, agents_found: result.data.length };
+}
+
 async function listAgents() {
   requireConfiguration();
   const agents = await callCrmData({
@@ -481,6 +513,9 @@ Deno.serve(async (request) => {
     } else if (body.action === 'analytics') {
       if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
       result = await analytics(body);
+    } else if (body.action === 'check_connection') {
+      if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
+      result = await checkConnection();
     } else if (body.action === 'list_agents') {
       if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
       result = await listAgents();

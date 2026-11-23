@@ -84,6 +84,21 @@ export function syncLead(input: {
   return callExternalCrm({ action: 'sync_lead', ...input });
 }
 
+export type ExternalConnectionCheck = {
+  ok: boolean;
+  status: number;
+  error?: string;
+  agents_found?: number;
+};
+
+export async function checkExternalConnection(): Promise<ExternalConnectionCheck> {
+  const result = await callExternalCrm({ action: 'check_connection' });
+  if (!result || Array.isArray(result) || typeof (result as { ok?: unknown }).ok !== 'boolean') {
+    throw new Error('Сервер вернул некорректный результат проверки');
+  }
+  return result as ExternalConnectionCheck;
+}
+
 export async function fetchExternalAgents() {
   const result = await callExternalCrm({ action: 'list_agents' });
   if (!Array.isArray(result)) throw new Error('Внешняя CRM вернула некорректный список агентов');
