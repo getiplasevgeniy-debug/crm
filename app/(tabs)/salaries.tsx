@@ -53,6 +53,11 @@ export default function SalariesScreen() {
   const [payNote, setPayNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [payDate, setPayDate] = useState('');
+  const [walletDraft, setWalletDraft] = useState('');
+  const [walletDirty, setWalletDirty] = useState(false);
+  const [walletSaving, setWalletSaving] = useState(false);
+  const [walletError, setWalletError] = useState<string | null>(null);
+  const [walletSuccess, setWalletSuccess] = useState(false);
 
   const [extraModalVisible, setExtraModalVisible] = useState(false);
   const [extraManager, setExtraManager] = useState<Manager | null>(null);
@@ -61,7 +66,7 @@ export default function SalariesScreen() {
     setError(null);
     const { data: mgrData, error: mgrErr } = await supabase
       .from('managers')
-      .select('id, name, phone, salary_percentage, created_at')
+      .select('id, name, phone, salary_percentage, created_at, crypto_wallet')
       .order('name');
 
     if (mgrErr) {
@@ -119,6 +124,10 @@ export default function SalariesScreen() {
 
     setCalcData(result);
 
+    if (!isAdmin && result[0] && !walletDirty) {
+      setWalletDraft(result[0].manager.crypto_wallet || '');
+    }
+
     const { start: pStart, end: pEnd } = getMonthRange(selectedMonth);
     const { data: payData } = await supabase
       .from('salary_payments')
@@ -131,7 +140,7 @@ export default function SalariesScreen() {
     setPayments((payData || []) as unknown as (SalaryPayment & { managers: { name: string } | null })[]);
     setLoading(false);
     setRefreshing(false);
-  }, [selectedMonth]);
+  }, [selectedMonth, isAdmin, walletDirty]);
 
   useEffect(() => {
     fetchData();
@@ -140,6 +149,35 @@ export default function SalariesScreen() {
     }, 5000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  const handleSaveWallet = async () => {
+    setWalletError(null);
+    setWalletSuccess(false);
+    const wallet = walletDraft.trim();
+    if (wallet.length > 200) {
+      setWalletError('Адрес кошелька не должен быть длиннее 200 символов.');
+      return;
+    }
+
+    setWalletSaving(true);
+    const { data, error: walletUpdateError } = await supabase.rpc('update_my_crypto_wallet', {
+      p_wallet: wallet || null,
+    });
+    setWalletSaving(false);
+    if (walletUpdateError) {
+      setWalletError('Не удалось сохранить кошелёк. Попробуйте ещё раз.');
+      return;
+    }
+
+    const savedWallet = typeof data === 'string' ? data : null;
+    setWalletDraft(savedWallet || '');
+    setWalletDirty(false);
+    setWalletSuccess(true);
+    setCalcData((current) => current.map((item) => ({
+      ...item,
+      manager: { ...item.manager, crypto_wallet: savedWallet },
+    })));
+  };
 
   const handleDeletePayment = (p: any) => {
     confirmDialog('Удалить выплату?', `${p.managers?.name || '—'}: ${formatMoney(Number(p.amount))}`, async () => {
@@ -252,6 +290,28 @@ export default function SalariesScreen() {
             <DetailRow label="Выплачено" value={`- ${formatMoney(item.totalPaid)}`} />
             <View style={styles.divider} />
             <DetailRow label="Итого к выплате" value={formatMoney(item.owed)} bold />
+            {isAdmin ? (
+              <DetailRow label="Криптокошелёк" value={item.manager.crypto_wallet || 'Не указан'} />
+            ) : (
+              <View style={styles.walletBox}>
+                <Text style={styles.walletTitle}>Кошелёк для выплаты</Text>
+                <Text style={styles.walletHint}>Укажите адрес, на который переводить зарплату.</Text>
+                <LabeledInput
+                  label="Адрес криптокошелька"
+                  value={walletDraft}
+                  onChangeText={(value) => {
+                    setWalletDraft(value);
+                    setWalletDirty(true);
+                    setWalletSuccess(false);
+                  }}
+                  placeholder="Введите адрес кошелька"
+                  multiline
+                />
+                {walletError ? <ErrorBanner message={walletError} /> : null}
+                {walletSuccess ? <Text style={styles.walletSuccess}>Кошелёк сохранён.</Text> : null}
+                <ActionButton label="Сохранить кошелёк" onPress={handleSaveWallet} loading={walletSaving} />
+              </View>
+            )}
 
             {item.adjustments.map((a) => (
               <View key={a.id} style={styles.adjRow}>
@@ -510,6 +570,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.neutral[0],
   },
+  walletBox: {
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: colors.neutral[950],
+    borderWidth: 1,
+    borderColor: colors.primary[700],
+  },
+  walletTitle: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: colors.neutral[0], marginBottom: 4 },
+  walletHint: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 17, color: colors.neutral[400], marginBottom: 12 },
+  walletSuccess: { fontFamily: 'Inter-Medium', fontSize: 13, color: colors.accent[400], marginBottom: 10 },
   divider: {
     height: 1,
     backgroundColor: colors.neutral[800],

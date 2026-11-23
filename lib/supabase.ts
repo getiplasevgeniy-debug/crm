@@ -14,6 +14,7 @@ export type Manager = {
   auth_user_id: string | null;
   email: string | null;
   external_agent_id: string | null;
+  crypto_wallet: string | null;
 };
 
 export type Transaction = {
