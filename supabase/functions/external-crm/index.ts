@@ -184,7 +184,7 @@ async function syncLead(body: Record<string, unknown>) {
   if (!name || name.length > 200 || !agentId || !localLeadId) throw new Error('Invalid lead data');
   if (email && email.length > 320) throw new Error('Invalid lead data');
   if (phone && phone.length > 50) throw new Error('Invalid lead data');
-  if (lostWith && lostWith.length > 500) throw new Error('Invalid lead data');
+  if (lostWith && lostWith.length > 100000) throw new Error('Invalid lead data');
   if (Number.isNaN(Date.parse(applicationDate))) throw new Error('Invalid lead data');
 
   const contact = {

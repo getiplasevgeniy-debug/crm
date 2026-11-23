@@ -126,7 +126,7 @@ export default function LeadsScreen() {
     if (parsedEmail) setEmail(parsedEmail);
     if (parsedDate) setApplicationDate(parsedDate);
     const noteText = notes.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-    setLostWith(noteText.slice(0, 500));
+    setLostWith(noteText);
     setPastedText('');
     setSuccess(`Поля заполнены из текста: ${parsedName}. Осталось выбрать менеджера.`);
   };
