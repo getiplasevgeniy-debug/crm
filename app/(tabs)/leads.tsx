@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { CheckCircle2, LogOut, PlugZap, Trash2, UserPlus } from 'lucide-react-native';
 import { ActionButton } from '@/components/ActionButton';
 import { ErrorBanner } from '@/components/ErrorBanner';
@@ -35,6 +35,7 @@ export default function LeadsScreen() {
   const [email, setEmail] = useState('');
   const [lostWith, setLostWith] = useState('');
   const [applicationDate, setApplicationDate] = useState(new Date().toISOString().slice(0, 10));
+  const [pastedText, setPastedText] = useState('');
   const [selectedAgentId, setSelectedAgentId] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -83,12 +84,60 @@ export default function LeadsScreen() {
     loadFailedLeads();
   }, [loadAgents, loadFailedLeads]);
 
+  const parsePastedText = () => {
+    setError(null);
+    setSuccess(null);
+    const notes: string[] = [];
+    let parsedName = '';
+    let parsedPhone = '';
+    let parsedEmail = '';
+    let parsedDate = '';
+    for (const rawLine of pastedText.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line) {
+        notes.push('');
+        continue;
+      }
+      const dateMatch = line.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+      if (dateMatch) {
+        parsedDate = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
+        notes.push(line);
+        continue;
+      }
+      const cleaned = line.replace(/^[^\p{L}\p{N}+]+/u, '');
+      if (line.startsWith('🛡')) {
+        parsedName = cleaned;
+      } else if (line.startsWith('📱')) {
+        if (cleaned.replace(/\D/g, '').length >= 7) parsedPhone = cleaned;
+        else notes.push(cleaned);
+      } else if (line.startsWith('💼')) {
+        if (cleaned.includes('@')) parsedEmail = cleaned;
+        else notes.push(cleaned);
+      } else {
+        notes.push(cleaned || line);
+      }
+    }
+    if (!parsedName) {
+      setError('Не удалось распознать имя клиента. Проверьте вставленный текст — строка с 🛡 обязательна.');
+      return;
+    }
+    setName(parsedName);
+    if (parsedPhone) setPhone(parsedPhone);
+    if (parsedEmail) setEmail(parsedEmail);
+    if (parsedDate) setApplicationDate(parsedDate);
+    const noteText = notes.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    setLostWith(noteText.slice(0, 500));
+    setPastedText('');
+    setSuccess(`Поля заполнены из текста: ${parsedName}. Осталось выбрать менеджера.`);
+  };
+
   const resetForm = () => {
     setName('');
     setPhone('');
     setEmail('');
     setLostWith('');
     setApplicationDate(new Date().toISOString().slice(0, 10));
+    setPastedText('');
     setSelectedAgentId('');
   };
 
@@ -316,6 +365,27 @@ export default function LeadsScreen() {
             <Text style={styles.introText}>Заполните данные и выберите менеджера. Клиент сразу появится в его списке во второй CRM.</Text>
           </View>
         </View>
+        <View style={styles.pasteCard}>
+          <Text style={styles.pasteTitle}>Вставить текст заявки</Text>
+          <Text style={styles.pasteHint}>Вставьте сообщение клиента целиком — имя, телефон, почта, дата и заметки заполнятся автоматически.</Text>
+          <TextInput
+            style={styles.pasteInput}
+            value={pastedText}
+            onChangeText={setPastedText}
+            placeholder="🛡 Имя Фамилия\n📱 +371 ...\n💼 mail@example.com\n💬 ..."
+            placeholderTextColor={colors.neutral[500]}
+            multiline
+            numberOfLines={6}
+          />
+          <TouchableOpacity
+            style={styles.pasteButton}
+            onPress={parsePastedText}
+            disabled={!pastedText.trim()}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.pasteButtonLabel, !pastedText.trim() && styles.pasteButtonLabelDim]}>Заполнить автоматически</Text>
+          </TouchableOpacity>
+        </View>
         <LabeledInput label="Имя и фамилия *" value={name} onChangeText={setName} placeholder="Иван Иванов" />
         <LabeledInput label="Номер телефона" value={phone} onChangeText={setPhone} placeholder="+373 000 00 000" keyboardType="phone-pad" />
         <LabeledInput label="Почта" value={email} onChangeText={setEmail} placeholder="client@example.com" keyboardType="default" />
@@ -381,6 +451,13 @@ const styles = StyleSheet.create({
   deleteButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, marginTop: 8, borderRadius: 12, borderWidth: 1, borderColor: colors.error[500] },
   deleteLabel: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: colors.error[500] },
   bottomSpace: { height: 24 },
+  pasteCard: { padding: 16, marginBottom: 20, borderRadius: 16, backgroundColor: colors.neutral[900], borderWidth: 1, borderColor: colors.primary[700] },
+  pasteTitle: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: colors.neutral[0], marginBottom: 4 },
+  pasteHint: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 19, color: colors.neutral[200], marginBottom: 10 },
+  pasteInput: { minHeight: 110, borderRadius: 12, backgroundColor: colors.neutral[800], borderWidth: 1, borderColor: colors.neutral[700], padding: 12, color: colors.neutral[0], fontFamily: 'Inter-Regular', fontSize: 14, lineHeight: 20, textAlignVertical: 'top', marginBottom: 10 },
+  pasteButton: { alignItems: 'center', paddingVertical: 12, borderRadius: 12, backgroundColor: colors.primary[600] },
+  pasteButtonLabel: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: colors.neutral[0] },
+  pasteButtonLabelDim: { opacity: 0.5 },
   connectionCard: { padding: 16, marginBottom: 20, borderRadius: 16, backgroundColor: colors.neutral[900], borderWidth: 1, borderColor: colors.neutral[700] },
   connectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   connectionTitle: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: colors.neutral[0], flex: 1 },
