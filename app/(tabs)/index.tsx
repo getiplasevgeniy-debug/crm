@@ -11,7 +11,7 @@ import { FAB } from '@/components/FAB';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { Badge } from '@/components/Badge';
-import { Plus, Phone, Trash2, Pencil, LogOut, Mail, Link2, ChevronDown, Check } from 'lucide-react-native';
+import { Plus, Phone, Trash2, Pencil, LogOut, Mail, Link2, ChevronDown, Check, KeyRound } from 'lucide-react-native';
 import { useAuth } from '@/lib/auth';
 import { fetchExternalAgents, ExternalAgent } from '@/lib/externalCrm';
 import { alertDialog, confirmDialog } from '@/lib/confirm';
@@ -38,6 +38,15 @@ export default function ManagersScreen() {
   const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [securityVisible, setSecurityVisible] = useState(false);
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [confirmAdminPassword, setConfirmAdminPassword] = useState('');
+  const [securitySaving, setSecuritySaving] = useState(false);
+  const [securityError, setSecurityError] = useState<string | null>(null);
+  const [managerForPassword, setManagerForPassword] = useState<Manager | null>(null);
+  const [newManagerPassword, setNewManagerPassword] = useState('');
+  const [managerPasswordSaving, setManagerPasswordSaving] = useState(false);
+  const [managerPasswordError, setManagerPasswordError] = useState<string | null>(null);
 
   // External agent binding
   const [externalAgents, setExternalAgents] = useState<ExternalAgent[]>([]);
@@ -209,6 +218,58 @@ export default function ManagersScreen() {
     }
   };
 
+  const handleChangeAdminPassword = async () => {
+    setSecurityError(null);
+    if (newAdminPassword.length < 6) {
+      setSecurityError('Новый пароль должен быть не менее 6 символов.');
+      return;
+    }
+    if (newAdminPassword !== confirmAdminPassword) {
+      setSecurityError('Пароли не совпадают.');
+      return;
+    }
+    setSecuritySaving(true);
+    const { error: updateError } = await supabase.auth.updateUser({ password: newAdminPassword });
+    setSecuritySaving(false);
+    if (updateError) {
+      setSecurityError('Не удалось изменить пароль. Попробуйте ещё раз.');
+      return;
+    }
+    setNewAdminPassword('');
+    setConfirmAdminPassword('');
+    setSecurityVisible(false);
+    alertDialog('Пароль изменён', 'Новый пароль администратора сохранён.');
+  };
+
+  const openManagerPassword = (manager: Manager) => {
+    setManagerForPassword(manager);
+    setNewManagerPassword('');
+    setManagerPasswordError(null);
+  };
+
+  const handleChangeManagerPassword = async () => {
+    if (!managerForPassword) return;
+    setManagerPasswordError(null);
+    if (newManagerPassword.length < 6) {
+      setManagerPasswordError('Новый пароль должен быть не менее 6 символов.');
+      return;
+    }
+    setManagerPasswordSaving(true);
+    try {
+      const { data, error: functionError } = await supabase.functions.invoke('create-manager', {
+        body: { action: 'reset-password', manager_id: managerForPassword.id, password: newManagerPassword },
+      });
+      if (functionError || !data?.ok) throw new Error('reset failed');
+      setManagerForPassword(null);
+      setNewManagerPassword('');
+      alertDialog('Пароль обновлён', `Для менеджера «${managerForPassword.name}» задан новый пароль.`);
+    } catch {
+      setManagerPasswordError('Не удалось изменить пароль менеджера. Попробуйте ещё раз.');
+    } finally {
+      setManagerPasswordSaving(false);
+    }
+  };
+
   const handleDelete = (m: Manager) => {
     confirmDialog(
       'Удалить менеджера?',
@@ -256,6 +317,9 @@ export default function ManagersScreen() {
           </View>
           {isAdmin ? (
             <View style={styles.cardActions}>
+              <TouchableOpacity onPress={() => openManagerPassword(item)} hitSlop={12} style={styles.iconBtn}>
+                <KeyRound size={16} color={colors.accent[400]} />
+              </TouchableOpacity>
               <TouchableOpacity onPress={() => openEdit(item)} hitSlop={12} style={styles.iconBtn}>
                 <Pencil size={16} color={colors.neutral[400]} />
               </TouchableOpacity>
@@ -291,9 +355,16 @@ export default function ManagersScreen() {
         subtitle={`${managers.length} активных`}
         loading={loading}
         right={
-          <TouchableOpacity onPress={signOut} hitSlop={12} style={styles.logoutBtn}>
-            <LogOut size={20} color={colors.neutral[400]} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            {isAdmin ? (
+              <TouchableOpacity onPress={() => setSecurityVisible(true)} hitSlop={12} style={styles.logoutBtn}>
+                <KeyRound size={20} color={colors.accent[400]} />
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity onPress={signOut} hitSlop={12} style={styles.logoutBtn}>
+              <LogOut size={20} color={colors.neutral[400]} />
+            </TouchableOpacity>
+          </View>
         }
       >
         {error ? <ErrorBanner message={error} /> : null}
@@ -311,6 +382,29 @@ export default function ManagersScreen() {
       />
 
       {isAdmin ? <FAB label="+ Менеджер" onPress={openAdd} /> : null}
+
+      <SheetModal
+        visible={securityVisible}
+        onClose={() => setSecurityVisible(false)}
+        title="Безопасность"
+      >
+        <Text style={styles.securityHint}>Измените пароль администратора. Старый пароль нигде не отображается.</Text>
+        <LabeledInput label="Новый пароль" value={newAdminPassword} onChangeText={setNewAdminPassword} placeholder="минимум 6 символов" secureTextEntry />
+        <LabeledInput label="Повторите новый пароль" value={confirmAdminPassword} onChangeText={setConfirmAdminPassword} placeholder="введите ещё раз" secureTextEntry />
+        {securityError ? <ErrorBanner message={securityError} /> : null}
+        <ActionButton label="Сменить мой пароль" onPress={handleChangeAdminPassword} loading={securitySaving} />
+      </SheetModal>
+
+      <SheetModal
+        visible={managerForPassword !== null}
+        onClose={() => setManagerForPassword(null)}
+        title="Новый пароль менеджера"
+      >
+        <Text style={styles.securityHint}>Для «{managerForPassword?.name}» задаётся новый пароль. Старый пароль посмотреть нельзя.</Text>
+        <LabeledInput label="Новый пароль" value={newManagerPassword} onChangeText={setNewManagerPassword} placeholder="минимум 6 символов" secureTextEntry />
+        {managerPasswordError ? <ErrorBanner message={managerPasswordError} /> : null}
+        <ActionButton label="Задать новый пароль" onPress={handleChangeManagerPassword} loading={managerPasswordSaving} />
+      </SheetModal>
 
       <SheetModal
         visible={modalVisible}
@@ -347,6 +441,7 @@ export default function ManagersScreen() {
               onChangeText={setPassword}
               placeholder="минимум 6 символов"
               keyboardType="default"
+              secureTextEntry
             />
           </>
         ) : null}
@@ -501,6 +596,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.neutral[0],
   },
+  headerActions: { flexDirection: 'row', gap: 8 },
+  securityHint: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 19, color: colors.neutral[300], marginBottom: 16 },
   fieldLabel: {
     fontFamily: 'Inter-Regular',
     fontSize: 13,

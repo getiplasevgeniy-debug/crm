@@ -50,6 +50,42 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
+
+    if (body.action === "reset-password") {
+      const managerId = typeof body.manager_id === "string" ? body.manager_id.trim() : "";
+      const password = typeof body.password === "string" ? body.password : "";
+      if (!managerId || password.length < 6) {
+        return new Response(JSON.stringify({ error: "Manager and password are required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: manager, error: managerError } = await supabase
+        .from("managers")
+        .select("auth_user_id")
+        .eq("id", managerId)
+        .maybeSingle();
+      if (managerError || !manager?.auth_user_id) {
+        return new Response(JSON.stringify({ error: "Manager account is not available" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { error: updateError } = await supabase.auth.admin.updateUserById(manager.auth_user_id, { password });
+      if (updateError) {
+        return new Response(JSON.stringify({ error: "Could not update manager password" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { name, phone, salary_percentage, email, password } = body;
 
     if (!name || !email || !password) {

@@ -9,6 +9,7 @@ type Props = {
   keyboardType?: 'default' | 'numeric' | 'phone-pad';
   multiline?: boolean;
   datePicker?: boolean;
+  secureTextEntry?: boolean;
 };
 
 export function LabeledInput({
@@ -19,6 +20,7 @@ export function LabeledInput({
   keyboardType = 'default',
   multiline = false,
   datePicker = false,
+  secureTextEntry = false,
 }: Props) {
   return (
     <View style={styles.container}>
@@ -31,6 +33,7 @@ export function LabeledInput({
         placeholderTextColor={colors.neutral[500]}
         keyboardType={keyboardType}
         multiline={multiline}
+        secureTextEntry={secureTextEntry}
         numberOfLines={multiline ? 3 : 1}
         {...(datePicker && Platform.OS === 'web'
           ? { type: 'date' } as any
