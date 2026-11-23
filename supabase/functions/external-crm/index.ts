@@ -1,5 +1,6 @@
 import webpush from 'npm:web-push@3.6.7';
 
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -8,6 +9,7 @@ const corsHeaders = {
 
 const targetUrl = Deno.env.get('TARGET_SUPABASE_URL');
 const targetServiceRoleKey = Deno.env.get('TARGET_SUPABASE_SERVICE_ROLE_KEY');
+const targetCrmIntegrationKey = Deno.env.get('TARGET_CRM_INTEGRATION_KEY');
 const targetAnonKey = Deno.env.get('TARGET_SUPABASE_ANON_KEY') || targetServiceRoleKey;
 const currentUrl = Deno.env.get('SUPABASE_URL');
 const currentServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -56,7 +58,7 @@ function crmDataHeaders() {
   return {
     apikey: targetAnonKey!,
     'Content-Type': 'application/json',
-    'X-CRM-SERVER-KEY': targetServiceRoleKey!,
+    'X-CRM-SERVER-KEY': targetCrmIntegrationKey!,
   };
 }
 
