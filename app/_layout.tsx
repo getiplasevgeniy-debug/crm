@@ -62,11 +62,25 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (typeof document !== 'undefined' && !document.querySelector('link[rel="manifest"]')) {
-      const manifest = document.createElement('link');
-      manifest.rel = 'manifest';
-      manifest.href = '/manifest.json';
-      document.head.appendChild(manifest);
+    if (typeof document !== 'undefined') {
+      if (!document.querySelector('link[rel="manifest"]')) {
+        const manifest = document.createElement('link');
+        manifest.rel = 'manifest';
+        manifest.href = '/manifest.json';
+        document.head.appendChild(manifest);
+      }
+
+      const viewport = document.querySelector('meta[name="viewport"]');
+      if (viewport) {
+        viewport.setAttribute(
+          'content',
+          'width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover',
+        );
+      }
+
+      const preventGesture = (e: Event) => e.preventDefault();
+      document.addEventListener('gesturestart', preventGesture);
+      return () => document.removeEventListener('gesturestart', preventGesture);
     }
   }, []);
 
