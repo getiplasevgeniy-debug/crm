@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { CheckCircle2, LogOut, PlugZap, Trash2, UserPlus } from 'lucide-react-native';
+import { CheckCircle2, LogOut, PlugZap, Trash2, UserPlus, RefreshCw, BarChart3 } from 'lucide-react-native';
 import { ActionButton } from '@/components/ActionButton';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { LabeledInput } from '@/components/LabeledInput';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useAuth } from '@/lib/auth';
-import { syncLead, checkExternalConnection, ExternalAgent } from '@/lib/externalCrm';
+import { syncLead, checkExternalConnection, fetchDailyTransferred, ExternalAgent, DailyTransferredResponse } from '@/lib/externalCrm';
 import { colors } from '@/lib/theme';
 import { supabase } from '@/lib/supabase';
 import { formatDate } from '@/lib/format';
@@ -30,6 +30,10 @@ export default function LeadsScreen() {
   const [deletingLeadId, setDeletingLeadId] = useState<string | null>(null);
   const [checkingConnection, setCheckingConnection] = useState(false);
   const [connectionResult, setConnectionResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [dailyStats, setDailyStats] = useState<DailyTransferredResponse | null>(null);
+  const [dailyLoading, setDailyLoading] = useState(false);
+  const [dailyError, setDailyError] = useState<string | null>(null);
+  const [dailyExpanded, setDailyExpanded] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -79,10 +83,23 @@ export default function LeadsScreen() {
     setFailedLeads((data || []) as FailedLead[]);
   }, []);
 
+  const loadDailyStats = useCallback(async () => {
+    setDailyLoading(true);
+    setDailyError(null);
+    try {
+      setDailyStats(await fetchDailyTransferred());
+    } catch (statsError) {
+      setDailyError(statsError instanceof Error ? statsError.message : 'Неизвестная ошибка');
+    } finally {
+      setDailyLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadAgents();
     loadFailedLeads();
-  }, [loadAgents, loadFailedLeads]);
+    loadDailyStats();
+  }, [loadAgents, loadFailedLeads, loadDailyStats]);
 
   const parsePastedText = () => {
     setError(null);
@@ -323,6 +340,62 @@ export default function LeadsScreen() {
             <Text style={styles.connectionHint}>Проверьте связь, если заявки не отправляются или аналитика пуста.</Text>
           )}
         </View>
+        <View style={styles.dailyCard}>
+          <View style={styles.dailyHeader}>
+            <BarChart3 size={18} color={colors.primary[300]} />
+            <Text style={styles.dailyTitle}>Передано за сегодня: {dailyStats ? dailyStats.total : '—'}</Text>
+            <TouchableOpacity
+              style={styles.dailyRefresh}
+              onPress={loadDailyStats}
+              disabled={dailyLoading}
+              activeOpacity={0.8}
+            >
+              <RefreshCw size={16} color={dailyLoading ? colors.neutral[500] : colors.primary[300]} />
+            </TouchableOpacity>
+          </View>
+          {dailyError ? <Text style={styles.dailyError}>Ошибка: {dailyError}</Text> : null}
+          {!dailyError && dailyStats ? (
+            <>
+              <View style={styles.statusRow}>
+                {Object.entries(dailyStats.statuses).length === 0 ? (
+                  <Text style={styles.dailyEmpty}>Сегодня клиенты ещё не передавались.</Text>
+                ) : (
+                  Object.entries(dailyStats.statuses).map(([status, count]) => (
+                    <View key={status} style={styles.statusChip}>
+                      <Text style={styles.statusChipText}>{status}: {count}</Text>
+                    </View>
+                  ))
+                )}
+              </View>
+              {dailyStats.items.length > 0 ? (
+                <>
+                  <TouchableOpacity
+                    style={styles.dailyToggle}
+                    onPress={() => setDailyExpanded(!dailyExpanded)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.dailyToggleText}>{dailyExpanded ? 'Скрыть список' : 'Показать список'}</Text>
+                  </TouchableOpacity>
+                  {dailyExpanded ? (
+                    <View style={styles.dailyList}>
+                      {dailyStats.items.map((item) => (
+                        <View key={item.id} style={styles.dailyRow}>
+                          <View style={styles.dailyRowInfo}>
+                            <Text style={styles.dailyRowName}>{item.name}</Text>
+                            <Text style={styles.dailyRowMeta}>
+                              {item.agent_name || 'Без агента'} · {formatDate(item.application_date)}
+                            </Text>
+                          </View>
+                          <View style={styles.statusBadge}><Text style={styles.statusBadgeText}>{item.status}</Text></View>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                </>
+              ) : null}
+            </>
+          ) : null}
+        </View>
         {error ? <ErrorBanner message={error} /> : null}
         {success ? (
           <View style={styles.successBanner}>
@@ -466,4 +539,22 @@ const styles = StyleSheet.create({
   connectionHint: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 19, color: colors.neutral[400], marginTop: 10 },
   connectionOk: { fontFamily: 'Inter-Medium', fontSize: 13, lineHeight: 19, color: colors.accent[400], marginTop: 10 },
   connectionFail: { fontFamily: 'Inter-Medium', fontSize: 13, lineHeight: 19, color: colors.error[400], marginTop: 10 },
+  dailyCard: { padding: 16, marginBottom: 20, borderRadius: 16, backgroundColor: colors.neutral[900], borderWidth: 1, borderColor: colors.neutral[700] },
+  dailyHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  dailyTitle: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: colors.neutral[0], flex: 1 },
+  dailyRefresh: { padding: 8, borderRadius: 10, backgroundColor: colors.neutral[800] },
+  dailyError: { fontFamily: 'Inter-Medium', fontSize: 13, lineHeight: 19, color: colors.error[400] },
+  dailyEmpty: { fontFamily: 'Inter-Regular', fontSize: 13, color: colors.neutral[400] },
+  statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  statusChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: colors.neutral[800] },
+  statusChipText: { fontFamily: 'Inter-Medium', fontSize: 12, color: colors.neutral[200] },
+  dailyToggle: { marginTop: 12, alignItems: 'center', paddingVertical: 8 },
+  dailyToggleText: { fontFamily: 'Inter-Medium', fontSize: 13, color: colors.primary[300] },
+  dailyList: { marginTop: 4, gap: 8 },
+  dailyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 10, backgroundColor: colors.neutral[950], borderWidth: 1, borderColor: colors.neutral[800] },
+  dailyRowInfo: { flex: 1 },
+  dailyRowName: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: colors.neutral[0] },
+  dailyRowMeta: { fontFamily: 'Inter-Regular', fontSize: 11, color: colors.neutral[500], marginTop: 2 },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: colors.primary[900] },
+  statusBadgeText: { fontFamily: 'Inter-Medium', fontSize: 11, color: colors.primary[200] },
 });

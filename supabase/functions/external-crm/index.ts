@@ -421,6 +421,67 @@ async function buildAnalytics(leads: LocalLead[], includeAllAgents: boolean) {
   };
 }
 
+async function dailyTransferred() {
+  requireConfiguration();
+  const kyivNow = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Kyiv' });
+  const today = kyivNow.slice(0, 10);
+  const from = `${today}T00:00:00+02:00`;
+  const to = `${today}T23:59:59+02:00`;
+
+  const params = new URLSearchParams({
+    select: 'id,name,application_date,external_contact_id,external_agent_id,assigned_manager_id,sync_status',
+    application_date: `gte.${from}`,
+    sync_status: 'eq.synced',
+    external_contact_id: 'not.is.null',
+    order: 'application_date.desc',
+    limit: '1000',
+  });
+  const response = await fetch(`${currentUrl}/rest/v1/lead_submissions?${params.toString()}`, {
+    headers: { apikey: currentServiceRoleKey!, Authorization: `Bearer ${currentServiceRoleKey!}` },
+  });
+  if (!response.ok) throw new Error('Не удалось загрузить список переданных клиентов');
+  const leads = await response.json();
+  if (!Array.isArray(leads)) throw new Error('Некорректный список переданных клиентов');
+
+  const agentNames = new Map<string, string>(
+    (await fetchLocalAgents()).map((a: { id: string; name: string }) => [a.id, a.name]),
+  );
+
+  const contactIds = Array.from(new Set(leads.map((l: { external_contact_id: string }) => l.external_contact_id)));
+  const contactById = new Map<string, { status?: string; agent_id?: string }>();
+  const chunkSize = 200;
+  for (let i = 0; i < contactIds.length; i += chunkSize) {
+    const chunk = contactIds.slice(i, i + chunkSize);
+    const contacts = await callCrmData({
+      op: 'select',
+      table: 'contacts',
+      select: 'id,agent_id,status',
+      filters: [{ col: 'id', op: 'in', value: chunk }],
+    });
+    for (const contact of (contacts || []) as Array<{ id: string; agent_id?: string; status?: string }>) {
+      contactById.set(contact.id, contact);
+    }
+  }
+
+  const items = (leads || []).map((lead: { id: string; name: string; application_date: string; external_contact_id: string; external_agent_id: string | null; assigned_manager_id: string | null }) => {
+    const contact = contactById.get(lead.external_contact_id);
+    return {
+      id: lead.id,
+      name: lead.name,
+      application_date: lead.application_date,
+      status: contact?.status || 'Неизвестно',
+      agent_name: lead.external_agent_id ? agentNames.get(lead.external_agent_id) || null : null,
+    };
+  });
+
+  const statuses: Record<string, number> = {};
+  for (const item of items) {
+    statuses[item.status] = (statuses[item.status] || 0) + 1;
+  }
+
+  return { date: today, total: items.length, statuses, items };
+}
+
 async function analytics(body: Record<string, unknown>) {
   requireConfiguration();
   const { from, to } = dateRangeFromBody(body);
@@ -512,6 +573,9 @@ Deno.serve(async (request) => {
     } else if (body.action === 'analytics') {
       if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
       result = await analytics(body);
+    } else if (body.action === 'daily_transferred') {
+      if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
+      result = await dailyTransferred();
     } else if (body.action === 'check_connection') {
       if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
       result = await checkConnection();

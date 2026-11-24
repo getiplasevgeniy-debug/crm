@@ -84,6 +84,29 @@ export function syncLead(input: {
   return callExternalCrm({ action: 'sync_lead', ...input });
 }
 
+export type DailyTransferredItem = {
+  id: string;
+  name: string;
+  application_date: string;
+  status: string;
+  agent_name: string | null;
+};
+
+export type DailyTransferredResponse = {
+  date: string;
+  total: number;
+  statuses: Record<string, number>;
+  items: DailyTransferredItem[];
+};
+
+export async function fetchDailyTransferred(): Promise<DailyTransferredResponse> {
+  const result = await callExternalCrm({ action: 'daily_transferred' });
+  if (!result || Array.isArray(result) || !Array.isArray(result.items)) {
+    throw new Error('Сервер вернул некорректную статистику за день');
+  }
+  return result as DailyTransferredResponse;
+}
+
 export type ExternalConnectionCheck = {
   ok: boolean;
   status: number;
