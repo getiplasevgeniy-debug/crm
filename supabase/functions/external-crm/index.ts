@@ -421,6 +421,12 @@ async function buildAnalytics(leads: LocalLead[], includeAllAgents: boolean) {
   };
 }
 
+function maskName(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed.length <= 3) return trimmed;
+  return `${trimmed.slice(0, 3)}${'*'.repeat(Math.min(trimmed.length - 3, 30))}`;
+}
+
 async function dailyTransferred() {
   requireConfiguration();
   const kyivNow = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Kyiv' });
@@ -467,7 +473,7 @@ async function dailyTransferred() {
     const contact = contactById.get(lead.external_contact_id);
     return {
       id: lead.id,
-      name: lead.name,
+      name: maskName(lead.name),
       application_date: lead.application_date,
       status: contact?.status || 'Неизвестно',
       agent_name: lead.external_agent_id ? agentNames.get(lead.external_agent_id) || null : null,
