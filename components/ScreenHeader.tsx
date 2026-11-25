@@ -1,6 +1,9 @@
-import { ReactNode } from 'react';
-import { View, StyleSheet, SafeAreaView, Text, ActivityIndicator } from 'react-native';
+import { ReactNode, useState } from 'react';
+import { Modal, Pressable, ScrollView, View, StyleSheet, SafeAreaView, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { usePathname, useRouter } from 'expo-router';
+import { BarChart3, Bell, Gift, LineChart, Menu, Users, UsersRound, Wallet, ArrowDownCircle, UserPlus, X } from 'lucide-react-native';
 import { colors } from '@/lib/theme';
+import { useAuth } from '@/lib/auth';
 
 type Props = {
   children: ReactNode;
@@ -10,12 +13,57 @@ type Props = {
   right?: ReactNode;
 };
 
+type MenuItem = {
+  label: string;
+  path: string;
+  icon: typeof Users;
+};
+
+const adminMenu: MenuItem[] = [
+  { label: 'Менеджеры', path: '/', icon: Users },
+  { label: 'Клиенты', path: '/leads', icon: UserPlus },
+  { label: 'Аналитика', path: '/analytics', icon: LineChart },
+  { label: 'Транзакции', path: '/transactions', icon: ArrowDownCircle },
+  { label: 'Бонусы', path: '/bonuses', icon: Gift },
+  { label: 'Зарплаты', path: '/salaries', icon: Wallet },
+  { label: 'Напоминания', path: '/reminders', icon: Bell },
+  { label: 'Аудит', path: '/audit', icon: BarChart3 },
+];
+
+const managerMenu: MenuItem[] = [
+  { label: 'Профиль', path: '/', icon: Users },
+  { label: 'Аналитика', path: '/analytics', icon: LineChart },
+  { label: 'Команда', path: '/team', icon: UsersRound },
+  { label: 'Транзакции', path: '/transactions', icon: ArrowDownCircle },
+  { label: 'Бонусы', path: '/bonuses', icon: Gift },
+  { label: 'Зарплаты', path: '/salaries', icon: Wallet },
+];
+
 export function ScreenHeader({ children, title, subtitle, loading, right }: Props) {
+  const { role } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuItems = role === 'admin' ? adminMenu : managerMenu;
+
+  const openRoute = (path: string) => {
+    setMenuOpen(false);
+    router.replace(path as never);
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <View style={{ flex: 1 }}>
+          <TouchableOpacity
+            style={styles.menuButton}
+            onPress={() => setMenuOpen(true)}
+            accessibilityLabel="Открыть меню"
+            activeOpacity={0.8}
+          >
+            <Menu size={23} color={colors.neutral[0]} />
+          </TouchableOpacity>
+          <View style={styles.titleBlock}>
             <Text style={styles.title}>{title}</Text>
             {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
           </View>
@@ -27,6 +75,36 @@ export function ScreenHeader({ children, title, subtitle, loading, right }: Prop
           children
         )}
       </View>
+      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+        <View style={styles.modalRoot}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setMenuOpen(false)} />
+          <View style={styles.drawer}>
+            <View style={styles.drawerHeader}>
+              <Text style={styles.drawerTitle}>Разделы</Text>
+              <TouchableOpacity onPress={() => setMenuOpen(false)} style={styles.closeButton} accessibilityLabel="Закрыть меню">
+                <X size={21} color={colors.neutral[300]} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={styles.menuList}>
+              {menuItems.map((item) => {
+                const Icon = item.icon;
+                const active = item.path === '/' ? pathname === '/' : pathname.endsWith(item.path);
+                return (
+                  <TouchableOpacity
+                    key={item.path}
+                    style={[styles.menuItem, active && styles.menuItemActive]}
+                    onPress={() => openRoute(item.path)}
+                    activeOpacity={0.8}
+                  >
+                    <Icon size={20} color={active ? colors.primary[300] : colors.neutral[300]} />
+                    <Text style={[styles.menuLabel, active && styles.menuLabelActive]}>{item.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -43,7 +121,18 @@ const styles = StyleSheet.create({
   headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 12,
+  },
+  menuButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: colors.neutral[800],
+  },
+  titleBlock: {
+    flex: 1,
   },
   title: {
     fontFamily: 'Inter-Bold',
@@ -56,5 +145,65 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.neutral[400],
     marginTop: 2,
+  },
+  modalRoot: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(2, 6, 23, 0.7)',
+  },
+  drawer: {
+    width: 292,
+    maxWidth: '82%',
+    height: '100%',
+    backgroundColor: colors.neutral[950],
+    borderRightWidth: 1,
+    borderRightColor: colors.neutral[700],
+    paddingTop: 56,
+    paddingHorizontal: 16,
+  },
+  drawerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.neutral[800],
+  },
+  drawerTitle: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 22,
+    color: colors.neutral[0],
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 10,
+    backgroundColor: colors.neutral[800],
+  },
+  menuList: {
+    paddingTop: 16,
+    gap: 8,
+    paddingBottom: 24,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  menuItemActive: {
+    backgroundColor: colors.primary[900],
+  },
+  menuLabel: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 15,
+    color: colors.neutral[300],
+  },
+  menuLabelActive: {
+    color: colors.primary[200],
   },
 });

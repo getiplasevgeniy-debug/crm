@@ -14,12 +14,7 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.primary[500],
         tabBarInactiveTintColor: colors.neutral[400],
         tabBarStyle: {
-          backgroundColor: colors.neutral[900],
-          borderTopColor: colors.neutral[800],
-          borderTopWidth: 1,
-          paddingBottom: 16,
-          paddingTop: 4,
-          height: 72,
+          display: 'none',
         },
         tabBarLabelStyle: {
           fontFamily: 'Inter-Medium',
