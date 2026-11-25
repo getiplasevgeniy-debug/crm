@@ -1,9 +1,10 @@
 import { ReactNode, useState } from 'react';
 import { Modal, Pressable, ScrollView, View, StyleSheet, SafeAreaView, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
-import { BarChart3, Bell, Gift, LineChart, Menu, Users, UsersRound, Wallet, ArrowDownCircle, UserPlus, X } from 'lucide-react-native';
+import { BarChart3, Bell, Gift, LineChart, Menu, PlugZap, Users, UsersRound, Wallet, ArrowDownCircle, UserPlus, X } from 'lucide-react-native';
 import { colors } from '@/lib/theme';
 import { useAuth } from '@/lib/auth';
+import { checkExternalConnection } from '@/lib/externalCrm';
 
 type Props = {
   children: ReactNode;
@@ -44,11 +45,30 @@ export function ScreenHeader({ children, title, subtitle, loading, right }: Prop
   const router = useRouter();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [connResult, setConnResult] = useState<{ ok: boolean; text: string } | null>(null);
   const menuItems = role === 'admin' ? adminMenu : managerMenu;
 
   const openRoute = (path: string) => {
     setMenuOpen(false);
     router.replace(path as never);
+  };
+
+  const handleCheckConnection = async () => {
+    setChecking(true);
+    setConnResult(null);
+    try {
+      const check = await checkExternalConnection();
+      if (check.ok) {
+        setConnResult({ ok: true, text: `Подключение работает (код ${check.status}, агентов: ${check.agents_found ?? 0})` });
+      } else {
+        setConnResult({ ok: false, text: `Не удалось (код ${check.status}): ${check.error ?? 'неизвестная ошибка'}` });
+      }
+    } catch (e) {
+      setConnResult({ ok: false, text: `Не удалось: ${e instanceof Error ? e.message : 'Неизвестная ошибка'}` });
+    } finally {
+      setChecking(false);
+    }
   };
 
   return (
@@ -101,6 +121,23 @@ export function ScreenHeader({ children, title, subtitle, loading, right }: Prop
                   </TouchableOpacity>
                 );
               })}
+              {role === 'admin' ? (
+                <View style={styles.connSection}>
+                  <View style={styles.connDivider} />
+                  <TouchableOpacity
+                    style={styles.connButton}
+                    onPress={handleCheckConnection}
+                    disabled={checking}
+                    activeOpacity={0.8}
+                  >
+                    <PlugZap size={20} color={colors.neutral[300]} />
+                    <Text style={styles.connButtonLabel}>{checking ? 'Проверяем…' : 'Проверить подключение к CRM'}</Text>
+                  </TouchableOpacity>
+                  {connResult ? (
+                    <Text style={connResult.ok ? styles.connOk : styles.connFail}>{connResult.text}</Text>
+                  ) : null}
+                </View>
+              ) : null}
             </ScrollView>
           </View>
         </View>
@@ -205,5 +242,42 @@ const styles = StyleSheet.create({
   },
   menuLabelActive: {
     color: colors.primary[200],
+  },
+  connSection: {
+    marginTop: 8,
+  },
+  connDivider: {
+    height: 1,
+    backgroundColor: colors.neutral[800],
+    marginBottom: 12,
+  },
+  connButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  connButtonLabel: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 15,
+    color: colors.neutral[300],
+  },
+  connOk: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.accent[400],
+    paddingHorizontal: 14,
+    paddingBottom: 10,
+  },
+  connFail: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.error[400],
+    paddingHorizontal: 14,
+    paddingBottom: 10,
   },
 });

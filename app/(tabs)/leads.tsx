@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { CheckCircle2, LogOut, PlugZap, Trash2, UserPlus, RefreshCw, BarChart3 } from 'lucide-react-native';
+import { CheckCircle2, LogOut, Trash2, UserPlus, RefreshCw, BarChart3 } from 'lucide-react-native';
 import { ActionButton } from '@/components/ActionButton';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { LabeledInput } from '@/components/LabeledInput';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useAuth } from '@/lib/auth';
-import { syncLead, checkExternalConnection, fetchDailyTransferred, fetchExternalAdmin, ExternalAgent, DailyTransferredResponse } from '@/lib/externalCrm';
+import { syncLead, fetchDailyTransferred, fetchExternalAdmin, ExternalAgent, DailyTransferredResponse } from '@/lib/externalCrm';
 import { colors } from '@/lib/theme';
 import { supabase } from '@/lib/supabase';
 import { formatDate } from '@/lib/format';
@@ -28,8 +28,6 @@ export default function LeadsScreen() {
   const [failedLeads, setFailedLeads] = useState<FailedLead[]>([]);
   const [retryingLeadId, setRetryingLeadId] = useState<string | null>(null);
   const [deletingLeadId, setDeletingLeadId] = useState<string | null>(null);
-  const [checkingConnection, setCheckingConnection] = useState(false);
-  const [connectionResult, setConnectionResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [dailyStats, setDailyStats] = useState<DailyTransferredResponse | null>(null);
   const [dailyLoading, setDailyLoading] = useState(false);
   const [dailyError, setDailyError] = useState<string | null>(null);
@@ -239,27 +237,6 @@ export default function LeadsScreen() {
     );
   };
 
-  const checkConnection = async () => {
-    setError(null);
-    setSuccess(null);
-    setCheckingConnection(true);
-    try {
-      const check = await checkExternalConnection();
-      if (check.ok) {
-        setConnectionResult({ ok: true, text: `Подключение к основной CRM работает (код ${check.status}, найдено агентов: ${check.agents_found ?? 0}).` });
-      } else {
-        setConnectionResult({ ok: false, text: `Подключение не удалось (код ${check.status}): ${check.error ?? 'неизвестная ошибка'}` });
-      }
-    } catch (checkError) {
-      setConnectionResult({
-        ok: false,
-        text: `Подключение не удалось: ${checkError instanceof Error ? checkError.message : 'Неизвестная ошибка'}`,
-      });
-    } finally {
-      setCheckingConnection(false);
-    }
-  };
-
   const allRecipients: ExternalAgent[] = adminAgent
     ? [...agents, { ...adminAgent, name: 'Администратор (без менеджера)', email: null }]
     : agents;
@@ -346,25 +323,6 @@ export default function LeadsScreen() {
         <View />
       </ScreenHeader>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.connectionCard}>
-          <View style={styles.connectionHeader}>
-            <Text style={styles.connectionTitle}>Подключение к основной CRM</Text>
-            <TouchableOpacity
-              style={styles.connectionButton}
-              onPress={checkConnection}
-              disabled={checkingConnection}
-              activeOpacity={0.8}
-            >
-              <PlugZap size={16} color={colors.neutral[0]} />
-              <Text style={styles.connectionLabel}>{checkingConnection ? 'Проверяем…' : 'Проверить подключение'}</Text>
-            </TouchableOpacity>
-          </View>
-          {connectionResult ? (
-            <Text style={connectionResult.ok ? styles.connectionOk : styles.connectionFail}>{connectionResult.text}</Text>
-          ) : (
-            <Text style={styles.connectionHint}>Проверьте связь, если заявки не отправляются или аналитика пуста.</Text>
-          )}
-        </View>
         <View style={styles.dailyCard}>
           <View style={styles.dailyHeader}>
             <BarChart3 size={18} color={colors.primary[300]} />
@@ -564,14 +522,6 @@ const styles = StyleSheet.create({
   pasteButton: { alignItems: 'center', paddingVertical: 12, borderRadius: 12, backgroundColor: colors.primary[600] },
   pasteButtonLabel: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: colors.neutral[0] },
   pasteButtonLabelDim: { opacity: 0.5 },
-  connectionCard: { padding: 16, marginBottom: 20, borderRadius: 16, backgroundColor: colors.neutral[900], borderWidth: 1, borderColor: colors.neutral[700] },
-  connectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  connectionTitle: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: colors.neutral[0], flex: 1 },
-  connectionButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: colors.primary[600] },
-  connectionLabel: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: colors.neutral[0] },
-  connectionHint: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 19, color: colors.neutral[400], marginTop: 10 },
-  connectionOk: { fontFamily: 'Inter-Medium', fontSize: 13, lineHeight: 19, color: colors.accent[400], marginTop: 10 },
-  connectionFail: { fontFamily: 'Inter-Medium', fontSize: 13, lineHeight: 19, color: colors.error[400], marginTop: 10 },
   dailyCard: { padding: 16, marginBottom: 20, borderRadius: 16, backgroundColor: colors.neutral[900], borderWidth: 1, borderColor: colors.neutral[700] },
   dailyHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   dailyTitle: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: colors.neutral[0], flex: 1 },
