@@ -27,6 +27,7 @@ const adminMenu: MenuItem[] = [
   { label: 'Транзакции', path: '/transactions', icon: ArrowDownCircle },
   { label: 'Бонусы', path: '/bonuses', icon: Gift },
   { label: 'Зарплаты', path: '/salaries', icon: Wallet },
+  { label: 'Кошельки', path: '/wallets', icon: Wallet },
   { label: 'Напоминания', path: '/reminders', icon: Bell },
   { label: 'Аудит', path: '/audit', icon: BarChart3 },
 ];

@@ -58,6 +58,7 @@ export default function SalariesScreen() {
   const [walletSaving, setWalletSaving] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
   const [walletSuccess, setWalletSuccess] = useState(false);
+  const [walletModalVisible, setWalletModalVisible] = useState(false);
 
   const [extraModalVisible, setExtraModalVisible] = useState(false);
   const [extraManager, setExtraManager] = useState<Manager | null>(null);
@@ -173,6 +174,7 @@ export default function SalariesScreen() {
     setWalletDraft(savedWallet || '');
     setWalletDirty(false);
     setWalletSuccess(true);
+    setWalletModalVisible(false);
     setCalcData((current) => current.map((item) => ({
       ...item,
       manager: { ...item.manager, crypto_wallet: savedWallet },
@@ -292,26 +294,7 @@ export default function SalariesScreen() {
             <DetailRow label="Итого к выплате" value={formatMoney(item.owed)} bold />
             {isAdmin ? (
               <DetailRow label="Криптокошелёк" value={item.manager.crypto_wallet || 'Не указан'} />
-            ) : (
-              <View style={styles.walletBox}>
-                <Text style={styles.walletTitle}>Кошелёк для выплаты</Text>
-                <Text style={styles.walletHint}>Укажите адрес, на который переводить зарплату.</Text>
-                <LabeledInput
-                  label="Адрес криптокошелька"
-                  value={walletDraft}
-                  onChangeText={(value) => {
-                    setWalletDraft(value);
-                    setWalletDirty(true);
-                    setWalletSuccess(false);
-                  }}
-                  placeholder="Введите адрес кошелька"
-                  multiline
-                />
-                {walletError ? <ErrorBanner message={walletError} /> : null}
-                {walletSuccess ? <Text style={styles.walletSuccess}>Кошелёк сохранён.</Text> : null}
-                <ActionButton label="Сохранить кошелёк" onPress={handleSaveWallet} loading={walletSaving} />
-              </View>
-            )}
+            ) : null}
 
             {item.adjustments.map((a) => (
               <View key={a.id} style={styles.adjRow}>
@@ -397,28 +380,73 @@ export default function SalariesScreen() {
           !loading ? <EmptyState message="Нет менеджеров. Добавьте их на вкладке «Менеджеры»." /> : null
         }
         ListFooterComponent={
-          payments.length > 0 ? (
-            <View style={styles.historySection}>
-              <Text style={styles.historyTitle}>История выплат за месяц</Text>
-              {payments.map((p) => (
-                <View key={p.id} style={styles.historyItem}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.historyName}>{p.managers?.name || '—'}</Text>
-                    {p.note ? <Text style={styles.historyNote}>{p.note}</Text> : null}
-                    <Text style={styles.historyDate}>{formatDate(p.created_at)}</Text>
+          <>
+            {!isAdmin ? (
+              <View style={styles.walletFooter}>
+                <Text style={styles.walletTitle}>Кошелёк для выплаты</Text>
+                <Text style={styles.walletHint}>Добавьте адрес, на который переводить зарплату.</Text>
+                <Text style={styles.walletCurrent}>{walletDraft || 'Кошелёк не добавлен'}</Text>
+                <TouchableOpacity
+                  style={styles.walletAddButton}
+                  onPress={() => {
+                    setWalletError(null);
+                    setWalletSuccess(false);
+                    setWalletModalVisible(true);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Wallet size={17} color={colors.neutral[0]} />
+                  <Text style={styles.walletAddButtonText}>{walletDraft ? 'Изменить кошелёк' : 'Добавить кошелёк'}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            {payments.length > 0 ? (
+              <View style={styles.historySection}>
+                <Text style={styles.historyTitle}>История выплат за месяц</Text>
+                {payments.map((p) => (
+                  <View key={p.id} style={styles.historyItem}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.historyName}>{p.managers?.name || '—'}</Text>
+                      {p.note ? <Text style={styles.historyNote}>{p.note}</Text> : null}
+                      <Text style={styles.historyDate}>{formatDate(p.created_at)}</Text>
+                    </View>
+                    <View style={styles.historyRight}>
+                      <Badge variant="success">- {formatMoney(Number(p.amount))}</Badge>
+                      <TouchableOpacity onPress={() => handleDeletePayment(p)} hitSlop={10} style={styles.historyDelBtn}>
+                        <Trash2 size={14} color={colors.error[400]} />
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                  <View style={styles.historyRight}>
-                    <Badge variant="success">- {formatMoney(Number(p.amount))}</Badge>
-                    <TouchableOpacity onPress={() => handleDeletePayment(p)} hitSlop={10} style={styles.historyDelBtn}>
-                      <Trash2 size={14} color={colors.error[400]} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-            </View>
-          ) : null
+                ))}
+              </View>
+            ) : null}
+          </>
         }
       />
+
+      {!isAdmin ? (
+        <SheetModal
+          visible={walletModalVisible}
+          onClose={() => setWalletModalVisible(false)}
+          title="Кошелёк для выплаты"
+        >
+          <Text style={styles.walletHint}>Укажите адрес, на который переводить зарплату.</Text>
+          <LabeledInput
+            label="Адрес криптокошелька"
+            value={walletDraft}
+            onChangeText={(value) => {
+              setWalletDraft(value);
+              setWalletDirty(true);
+              setWalletSuccess(false);
+            }}
+            placeholder="Введите адрес кошелька"
+            multiline
+          />
+          {walletError ? <ErrorBanner message={walletError} /> : null}
+          {walletSuccess ? <Text style={styles.walletSuccess}>Кошелёк сохранён.</Text> : null}
+          <ActionButton label="Сохранить кошелёк" onPress={handleSaveWallet} loading={walletSaving} />
+        </SheetModal>
+      ) : null}
 
       <ExtraPayoutModal
         visible={extraModalVisible}
@@ -570,16 +598,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.neutral[0],
   },
-  walletBox: {
+  walletFooter: {
     marginTop: 12,
-    padding: 14,
-    borderRadius: 14,
-    backgroundColor: colors.neutral[950],
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: colors.neutral[900],
     borderWidth: 1,
     borderColor: colors.primary[700],
   },
   walletTitle: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: colors.neutral[0], marginBottom: 4 },
   walletHint: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 17, color: colors.neutral[400], marginBottom: 12 },
+  walletCurrent: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 18, color: colors.neutral[200], marginBottom: 12 },
+  walletAddButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 12, backgroundColor: colors.primary[600] },
+  walletAddButtonText: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: colors.neutral[0] },
   walletSuccess: { fontFamily: 'Inter-Medium', fontSize: 13, color: colors.accent[400], marginBottom: 10 },
   divider: {
     height: 1,

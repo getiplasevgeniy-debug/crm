@@ -90,6 +90,7 @@ export default function TabLayout() {
           tabBarIcon: ({ size, color }) => <Wallet size={size} color={color} />,
         }}
       />
+      <Tabs.Screen name="wallets" options={{ href: null }} />
       {isAdmin ? (
         <Tabs.Screen
           name="reminders"
