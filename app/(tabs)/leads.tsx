@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { CheckCircle2, LogOut, Trash2, UserPlus, RefreshCw, BarChart3 } from 'lucide-react-native';
+import { CheckCircle2, LogOut, Trash2, RefreshCw, BarChart3 } from 'lucide-react-native';
 import { ActionButton } from '@/components/ActionButton';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { LabeledInput } from '@/components/LabeledInput';
@@ -422,13 +422,6 @@ export default function LeadsScreen() {
             ))}
           </View>
         ) : null}
-        <View style={styles.introCard}>
-          <UserPlus size={22} color={colors.primary[300]} />
-          <View style={styles.introCopy}>
-            <Text style={styles.introTitle}>Передать нового клиента</Text>
-            <Text style={styles.introText}>Заполните данные и выберите менеджера. Клиент сразу появится в его списке во второй CRM.</Text>
-          </View>
-        </View>
         <View style={styles.pasteCard}>
           <Text style={styles.pasteTitle}>Вставить текст заявки</Text>
           <Text style={styles.pasteHint}>Вставьте сообщение клиента целиком — имя, телефон, почта, дата и заметки заполнятся автоматически.</Text>
@@ -491,10 +484,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.neutral[950] },
   content: { paddingHorizontal: 20, paddingBottom: 32 },
   logoutBtn: { padding: 8, borderRadius: 10, backgroundColor: colors.neutral[800] },
-  introCard: { flexDirection: 'row', gap: 12, padding: 16, marginBottom: 20, borderRadius: 16, backgroundColor: colors.primary[900], borderWidth: 1, borderColor: colors.primary[700] },
-  introCopy: { flex: 1 },
-  introTitle: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: colors.neutral[0], marginBottom: 4 },
-  introText: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 20, color: colors.neutral[200] },
   label: { fontFamily: 'Inter-Medium', fontSize: 13, color: colors.neutral[400], marginBottom: 8 },
   agentList: { gap: 8, marginBottom: 20 },
   agentOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 12, backgroundColor: colors.neutral[900], borderWidth: 1, borderColor: colors.neutral[700] },
