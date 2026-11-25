@@ -99,8 +99,8 @@ export type DailyTransferredResponse = {
   items: DailyTransferredItem[];
 };
 
-export async function fetchDailyTransferred(): Promise<DailyTransferredResponse> {
-  const result = await callExternalCrm({ action: 'daily_transferred' });
+export async function fetchDailyTransferred(date?: string): Promise<DailyTransferredResponse> {
+  const result = await callExternalCrm(date ? { action: 'daily_transferred', date } : { action: 'daily_transferred' });
   if (!result || Array.isArray(result) || !Array.isArray(result.items)) {
     throw new Error('Сервер вернул некорректную статистику за день');
   }

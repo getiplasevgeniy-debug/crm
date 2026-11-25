@@ -34,6 +34,8 @@ export default function LeadsScreen() {
   const [dailyLoading, setDailyLoading] = useState(false);
   const [dailyError, setDailyError] = useState<string | null>(null);
   const [dailyExpanded, setDailyExpanded] = useState(false);
+  const [dailyDate, setDailyDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dailyDateLoaded, setDailyDateLoaded] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -87,19 +89,24 @@ export default function LeadsScreen() {
     setDailyLoading(true);
     setDailyError(null);
     try {
-      setDailyStats(await fetchDailyTransferred());
+      const stats = await fetchDailyTransferred(dailyDate || undefined);
+      setDailyStats(stats);
+      setDailyDateLoaded(stats.date);
     } catch (statsError) {
       setDailyError(statsError instanceof Error ? statsError.message : 'Неизвестная ошибка');
     } finally {
       setDailyLoading(false);
     }
-  }, []);
+  }, [dailyDate]);
+
+  useEffect(() => {
+    loadDailyStats();
+  }, [loadDailyStats]);
 
   useEffect(() => {
     loadAgents();
     loadFailedLeads();
-    loadDailyStats();
-  }, [loadAgents, loadFailedLeads, loadDailyStats]);
+  }, [loadAgents, loadFailedLeads]);
 
   const parsePastedText = () => {
     setError(null);
@@ -343,7 +350,9 @@ export default function LeadsScreen() {
         <View style={styles.dailyCard}>
           <View style={styles.dailyHeader}>
             <BarChart3 size={18} color={colors.primary[300]} />
-            <Text style={styles.dailyTitle}>Передано за сегодня: {dailyStats ? dailyStats.total : '—'}</Text>
+            <Text style={styles.dailyTitle}>
+              {dailyDateLoaded && dailyStats ? `Передано ${dailyDateLoaded === new Date().toISOString().slice(0, 10) ? 'за сегодня' : `за ${dailyDateLoaded}`}: ${dailyStats.total}` : 'Передано: …'}
+            </Text>
             <TouchableOpacity
               style={styles.dailyRefresh}
               onPress={loadDailyStats}
@@ -356,9 +365,15 @@ export default function LeadsScreen() {
           {dailyError ? <Text style={styles.dailyError}>Ошибка: {dailyError}</Text> : null}
           {!dailyError && dailyStats ? (
             <>
+              <LabeledInput
+                label="Дата (можно посмотреть любой день)"
+                value={dailyDate}
+                onChangeText={setDailyDate}
+                datePicker
+              />
               <View style={styles.statusRow}>
                 {Object.entries(dailyStats.statuses).length === 0 ? (
-                  <Text style={styles.dailyEmpty}>Сегодня клиенты ещё не передавались.</Text>
+                  <Text style={styles.dailyEmpty}>В этот день клиенты не передавались.</Text>
                 ) : (
                   Object.entries(dailyStats.statuses).map(([status, count]) => (
                     <View key={status} style={styles.statusChip}>

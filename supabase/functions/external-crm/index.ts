@@ -427,20 +427,22 @@ function maskName(name: string): string {
   return `${trimmed.slice(0, 3)}${'*'.repeat(Math.min(trimmed.length - 3, 30))}`;
 }
 
-async function dailyTransferred() {
+function kyivDateString(iso: string): string {
+  return new Date(iso).toLocaleString('sv-SE', { timeZone: 'Europe/Kyiv' }).slice(0, 10);
+}
+
+async function dailyTransferred(body: Record<string, unknown>) {
   requireConfiguration();
-  const kyivNow = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Kyiv' });
-  const today = kyivNow.slice(0, 10);
-  const from = `${today}T00:00:00+02:00`;
-  const to = `${today}T23:59:59+02:00`;
+  const date = typeof body.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date)
+    ? body.date
+    : kyivDateString(new Date().toISOString());
 
   const params = new URLSearchParams({
     select: 'id,name,application_date,external_contact_id,external_agent_id,assigned_manager_id,sync_status',
-    application_date: `gte.${from}`,
     sync_status: 'eq.synced',
     external_contact_id: 'not.is.null',
     order: 'application_date.desc',
-    limit: '1000',
+    limit: '10000',
   });
   const response = await fetch(`${currentUrl}/rest/v1/lead_submissions?${params.toString()}`, {
     headers: { apikey: currentServiceRoleKey!, Authorization: `Bearer ${currentServiceRoleKey!}` },
@@ -469,7 +471,9 @@ async function dailyTransferred() {
     }
   }
 
-  const items = (leads || []).map((lead: { id: string; name: string; application_date: string; external_contact_id: string; external_agent_id: string | null; assigned_manager_id: string | null }) => {
+  const items = (leads || [])
+    .filter((lead: { application_date: string }) => kyivDateString(lead.application_date) === date)
+    .map((lead: { id: string; name: string; application_date: string; external_contact_id: string; external_agent_id: string | null; assigned_manager_id: string | null }) => {
     const contact = contactById.get(lead.external_contact_id);
     return {
       id: lead.id,
@@ -485,7 +489,7 @@ async function dailyTransferred() {
     statuses[item.status] = (statuses[item.status] || 0) + 1;
   }
 
-  return { date: today, total: items.length, statuses, items };
+  return { date, total: items.length, statuses, items };
 }
 
 async function analytics(body: Record<string, unknown>) {
@@ -581,7 +585,7 @@ Deno.serve(async (request) => {
       result = await analytics(body);
     } else if (body.action === 'daily_transferred') {
       if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
-      result = await dailyTransferred();
+      result = await dailyTransferred(body);
     } else if (body.action === 'check_connection') {
       if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
       result = await checkConnection();
