@@ -51,13 +51,17 @@ export default function LeadsScreen() {
 
   const loadAgents = useCallback(async () => {
     setError(null);
+    let adminAgentError: string | null = null;
     const [managersRes, externalAgentsRes] = await Promise.all([
       supabase
         .from('managers')
         .select('name, email, external_agent_id')
         .not('external_agent_id', 'is', null)
         .order('name'),
-      fetchExternalAdmin().catch(() => null),
+      fetchExternalAdmin().catch((adminError) => {
+        adminAgentError = adminError instanceof Error ? adminError.message : 'Неизвестная ошибка';
+        return null;
+      }),
     ]);
 
     if (managersRes.error) {
@@ -71,6 +75,9 @@ export default function LeadsScreen() {
       })));
     }
     setAdminAgent(externalAgentsRes);
+    if (!externalAgentsRes && adminAgentError) {
+      setError(`Администратор не найден: ${adminAgentError}`);
+    }
     setLoading(false);
   }, []);
 
@@ -496,7 +503,7 @@ export default function LeadsScreen() {
           <Text style={styles.empty}>Нет менеджеров с подключённой второй CRM.</Text>
         ) : (
           <View style={styles.agentList}>
-            {agents.map((agent) => {
+            {allRecipients.map((agent) => {
               const selected = selectedAgentId === agent.id;
               return (
                 <TouchableOpacity

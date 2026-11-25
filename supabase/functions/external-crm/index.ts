@@ -520,7 +520,15 @@ async function getAdminAgent() {
   const agents = await callCrmData({ op: 'select', table: 'agents', select: 'id,name,role,status' });
   const adminAgent = (agents || []).find((a: { name?: string; role?: string }) => isAdminAgent(a));
   if (!adminAgent || typeof adminAgent.id !== 'string') {
-    throw new Error('Во второй CRM не найден агент-администратор для передачи на админку');
+    const known = (agents || [])
+      .map((a: { name?: string; role?: string; status?: string }) => {
+        const name = typeof a.name === 'string' && a.name.trim() ? a.name.trim() : '(без имени)';
+        const role = typeof a.role === 'string' && a.role.trim() ? a.role.trim() : 'нет роли';
+        const status = typeof a.status === 'string' && a.status.trim() ? a.status.trim() : 'нет статуса';
+        return `${name} (роль: ${role}, статус: ${status})`;
+      })
+      .join('; ');
+    throw new Error(`Во второй CRM не найден агент-администратор. Агенты в CRM: ${known || 'список пуст'}`);
   }
   return { id: adminAgent.id, name: adminAgent.name || 'Админ' };
 }
