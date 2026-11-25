@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { supabase, Manager } from '@/lib/supabase';
 import { colors } from '@/lib/theme';
-import { formatMoney } from '@/lib/format';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SheetModal } from '@/components/SheetModal';
 import { LabeledInput } from '@/components/LabeledInput';
@@ -18,7 +17,6 @@ import { alertDialog, confirmDialog } from '@/lib/confirm';
 
 type ManagerWithStats = Manager & {
   total_transactions: number;
-  total_amount: number;
 };
 
 export default function ManagersScreen() {
@@ -78,14 +76,12 @@ export default function ManagersScreen() {
     for (const m of managers) {
       const { data: txData } = await supabase
         .from('transactions')
-        .select('amount')
+        .select('id')
         .eq('manager_id', m.id);
 
-      const total = (txData || []).reduce((sum, t) => sum + Number(t.amount), 0);
       enriched.push({
         ...m,
         total_transactions: (txData || []).length,
-        total_amount: total,
       });
     }
 
@@ -338,10 +334,6 @@ export default function ManagersScreen() {
           <View style={styles.stat}>
             <Text style={styles.statLabel}>Транзакций</Text>
             <Text style={styles.statValue}>{item.total_transactions}</Text>
-          </View>
-          <View style={styles.stat}>
-            <Text style={styles.statLabel}>Сумма</Text>
-            <Text style={styles.statValue}>{formatMoney(item.total_amount)}</Text>
           </View>
         </View>
       </View>
