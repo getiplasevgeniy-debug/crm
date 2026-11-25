@@ -454,6 +454,12 @@ async function dailyTransferred(body: Record<string, unknown>) {
   const agentNames = new Map<string, string>(
     (await fetchLocalAgents()).map((a: { id: string; name: string }) => [a.id, a.name]),
   );
+  let adminAgentId: string | null = null;
+  try {
+    adminAgentId = (await getAdminAgent()).id;
+  } catch {
+    adminAgentId = null;
+  }
 
   const contactIds = Array.from(new Set(leads.map((l: { external_contact_id: string }) => l.external_contact_id)));
   const contactById = new Map<string, { status?: string; agent_id?: string }>();
@@ -480,7 +486,11 @@ async function dailyTransferred(body: Record<string, unknown>) {
       name: maskName(lead.name),
       application_date: lead.created_at,
       status: contact?.status || 'Неизвестно',
-      agent_name: lead.external_agent_id ? agentNames.get(lead.external_agent_id) || null : null,
+      agent_name: lead.external_agent_id
+        ? lead.external_agent_id === adminAgentId
+          ? 'Администратор'
+          : agentNames.get(lead.external_agent_id) || null
+        : null,
     };
   });
 
@@ -497,6 +507,21 @@ async function analytics(body: Record<string, unknown>) {
   const { from, to } = dateRangeFromBody(body);
   const leads = await fetchLocalLeads(from, to);
   return buildAnalytics(leads, true);
+}
+
+function isAdminAgentName(name: string | undefined | null): boolean {
+  if (!name) return false;
+  return ['админ', 'admin', 'administrator'].includes(name.trim().toLowerCase());
+}
+
+async function getAdminAgent() {
+  requireConfiguration();
+  const agents = await callCrmData({ op: 'select', table: 'agents', select: 'id,name,role,status' });
+  const adminAgent = (agents || []).find((a: { name?: string }) => isAdminAgentName(a.name));
+  if (!adminAgent || typeof adminAgent.id !== 'string') {
+    throw new Error('Во второй CRM не найден агент-администратор для передачи на админку');
+  }
+  return { id: adminAgent.id, name: adminAgent.name || 'Админ' };
 }
 
 async function findContact(body: Record<string, unknown>) {
@@ -589,6 +614,9 @@ Deno.serve(async (request) => {
     } else if (body.action === 'check_connection') {
       if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
       result = await checkConnection();
+    } else if (body.action === 'get_admin_agent') {
+      if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
+      result = await getAdminAgent();
     } else if (body.action === 'list_agents') {
       if (!authInfo.isAdmin) return json({ error: 'Admin only' }, 403);
       result = await listAgents();

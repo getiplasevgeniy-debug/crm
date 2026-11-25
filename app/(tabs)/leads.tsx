@@ -6,7 +6,7 @@ import { ErrorBanner } from '@/components/ErrorBanner';
 import { LabeledInput } from '@/components/LabeledInput';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useAuth } from '@/lib/auth';
-import { syncLead, checkExternalConnection, fetchDailyTransferred, ExternalAgent, DailyTransferredResponse } from '@/lib/externalCrm';
+import { syncLead, checkExternalConnection, fetchDailyTransferred, fetchExternalAgents, ExternalAgent, DailyTransferredResponse } from '@/lib/externalCrm';
 import { colors } from '@/lib/theme';
 import { supabase } from '@/lib/supabase';
 import { formatDate } from '@/lib/format';
@@ -35,6 +35,7 @@ export default function LeadsScreen() {
   const [dailyError, setDailyError] = useState<string | null>(null);
   const [dailyExpanded, setDailyExpanded] = useState(false);
   const [dailyDate, setDailyDate] = useState(new Date().toISOString().slice(0, 10));
+  const [adminAgent, setAdminAgent] = useState<ExternalAgent | null>(null);
   const [dailyDateLoaded, setDailyDateLoaded] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -50,22 +51,30 @@ export default function LeadsScreen() {
 
   const loadAgents = useCallback(async () => {
     setError(null);
-    const { data, error: managersError } = await supabase
-      .from('managers')
-      .select('name, email, external_agent_id')
-      .not('external_agent_id', 'is', null)
-      .order('name');
+    const [managersRes, externalAgentsRes] = await Promise.all([
+      supabase
+        .from('managers')
+        .select('name, email, external_agent_id')
+        .not('external_agent_id', 'is', null)
+        .order('name'),
+      fetchExternalAgents().catch(() => [] as ExternalAgent[]),
+    ]);
 
-    if (managersError) {
-      setError(`Ошибка загрузки агентов: ${managersError.message}`);
+    if (managersRes.error) {
+      setError(`Ошибка загрузки агентов: ${managersRes.error.message}`);
     } else {
-      setAgents((data || []).map((manager) => ({
+      setAgents((managersRes.data || []).map((manager) => ({
         id: manager.external_agent_id as string,
         name: manager.name,
         email: manager.email,
         role: 'agent',
       })));
     }
+    const external = Array.isArray(externalAgentsRes) ? externalAgentsRes as ExternalAgent[] : [];
+    const admin = external.find((a) =>
+      ['админ', 'admin', 'administrator'].includes(a.name.trim().toLowerCase()),
+    );
+    setAdminAgent(admin || null);
     setLoading(false);
   }, []);
 
@@ -248,16 +257,20 @@ export default function LeadsScreen() {
     }
   };
 
+  const allRecipients: ExternalAgent[] = adminAgent
+    ? [...agents, { ...adminAgent, name: 'Администратор (без менеджера)', email: null }]
+    : agents;
+
   const handleSubmit = async () => {
     setError(null);
     setSuccess(null);
-    const agent = agents.find((item) => item.id === selectedAgentId);
+    const agent = allRecipients.find((item) => item.id === selectedAgentId);
     if (!name.trim()) {
       setError('Введите имя и фамилию клиента.');
       return;
     }
     if (!agent) {
-      setError('Выберите агента из списка.');
+      setError('Выберите, кому передать клиента.');
       return;
     }
     if (!applicationDate || Number.isNaN(Date.parse(applicationDate))) {
@@ -296,7 +309,9 @@ export default function LeadsScreen() {
         application_date: applicationDateIso,
         external_agent_id: agent.id,
       });
-      setSuccess(`Клиент отправлен в CRM и назначен агенту ${agent.name}.`);
+      setSuccess(agent.id === adminAgent?.id
+        ? 'Клиент передан администратору. В статистике учтён, зарплата не начисляется.'
+        : `Клиент отправлен в CRM и назначен агенту ${agent.name}.`);
       resetForm();
     } catch (syncError) {
       await supabase
@@ -480,8 +495,8 @@ export default function LeadsScreen() {
         <LabeledInput label="С кем потерял" value={lostWith} onChangeText={setLostWith} placeholder="Необязательно" />
         <LabeledInput label="Дата заявки *" value={applicationDate} onChangeText={setApplicationDate} datePicker />
 
-        <Text style={styles.label}>Назначить менеджера *</Text>
-        {agents.length === 0 && !loading ? (
+        <Text style={styles.label}>Передать кому *</Text>
+        {allRecipients.length === 0 && !loading ? (
           <Text style={styles.empty}>Нет менеджеров с подключённой второй CRM.</Text>
         ) : (
           <View style={styles.agentList}>
