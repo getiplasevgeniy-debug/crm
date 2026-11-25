@@ -21,6 +21,7 @@
 - Error messaging pattern: show specific failure reason to the user rather than generic "check connection" text.
 - Agents loaded from external CRM into the client-creation flow.
 - Client notes/description fields accept unlimited text length — no truncation or character cap.
+- "Передать нового клиента" informational card removed from Clients page per user request; client transfer form and all other functions remain unchanged.
 
 ## Decisions, constraints & rationale
 
@@ -30,6 +31,7 @@
 - Server function and Clients page surface real error cause instead of masking it — rationale: faster diagnosis of CRM connection failures.
 - Month comparison feature was reverted/removed per user request; analytics loads only the single selected month.
 - Removed server-side 500-character limit on client notes/description — rationale: long client descriptions were being rejected by CRM submission. Server function updated and deployed successfully.
+- Removed "Передать нового клиента" notification card from Clients page — rationale: user found it unnecessary.
 
 ## Open questions & assumptions
 
