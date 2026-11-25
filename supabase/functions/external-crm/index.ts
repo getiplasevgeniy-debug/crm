@@ -438,10 +438,10 @@ async function dailyTransferred(body: Record<string, unknown>) {
     : kyivDateString(new Date().toISOString());
 
   const params = new URLSearchParams({
-    select: 'id,name,application_date,external_contact_id,external_agent_id,assigned_manager_id,sync_status',
+    select: 'id,name,application_date,external_contact_id,external_agent_id,assigned_manager_id,sync_status,created_at',
     sync_status: 'eq.synced',
     external_contact_id: 'not.is.null',
-    order: 'application_date.desc',
+    order: 'created_at.desc',
     limit: '10000',
   });
   const response = await fetch(`${currentUrl}/rest/v1/lead_submissions?${params.toString()}`, {
@@ -472,13 +472,13 @@ async function dailyTransferred(body: Record<string, unknown>) {
   }
 
   const items = (leads || [])
-    .filter((lead: { application_date: string }) => kyivDateString(lead.application_date) === date)
-    .map((lead: { id: string; name: string; application_date: string; external_contact_id: string; external_agent_id: string | null; assigned_manager_id: string | null }) => {
+    .filter((lead: { created_at: string }) => kyivDateString(lead.created_at) === date)
+    .map((lead: { id: string; name: string; application_date: string; external_contact_id: string; external_agent_id: string | null; assigned_manager_id: string | null; created_at: string }) => {
     const contact = contactById.get(lead.external_contact_id);
     return {
       id: lead.id,
       name: maskName(lead.name),
-      application_date: lead.application_date,
+      application_date: lead.created_at,
       status: contact?.status || 'Неизвестно',
       agent_name: lead.external_agent_id ? agentNames.get(lead.external_agent_id) || null : null,
     };
