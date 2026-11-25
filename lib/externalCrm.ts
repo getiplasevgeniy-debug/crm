@@ -128,6 +128,19 @@ export async function fetchExternalAgents() {
   return result as ExternalAgent[];
 }
 
+export async function fetchExternalAdmin(): Promise<ExternalAgent> {
+  const result = await callExternalCrm({ action: 'get_admin_agent' });
+  if (!result || Array.isArray(result) || typeof result.id !== 'string') {
+    throw new Error('Вторая CRM не вернула администратора');
+  }
+  return {
+    id: result.id,
+    name: typeof result.name === 'string' ? result.name : 'Администратор',
+    email: null,
+    role: 'admin',
+  };
+}
+
 export async function fetchMyAnalytics(from?: string, to?: string): Promise<ExternalAnalyticsResponse> {
   const payload: Record<string, unknown> = { action: 'my_analytics' };
   if (from) payload.from = from;

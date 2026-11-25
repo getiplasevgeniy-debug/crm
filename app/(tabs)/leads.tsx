@@ -6,7 +6,7 @@ import { ErrorBanner } from '@/components/ErrorBanner';
 import { LabeledInput } from '@/components/LabeledInput';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useAuth } from '@/lib/auth';
-import { syncLead, checkExternalConnection, fetchDailyTransferred, fetchExternalAgents, ExternalAgent, DailyTransferredResponse } from '@/lib/externalCrm';
+import { syncLead, checkExternalConnection, fetchDailyTransferred, fetchExternalAdmin, ExternalAgent, DailyTransferredResponse } from '@/lib/externalCrm';
 import { colors } from '@/lib/theme';
 import { supabase } from '@/lib/supabase';
 import { formatDate } from '@/lib/format';
@@ -57,7 +57,7 @@ export default function LeadsScreen() {
         .select('name, email, external_agent_id')
         .not('external_agent_id', 'is', null)
         .order('name'),
-      fetchExternalAgents().catch(() => [] as ExternalAgent[]),
+      fetchExternalAdmin().catch(() => null),
     ]);
 
     if (managersRes.error) {
@@ -70,11 +70,7 @@ export default function LeadsScreen() {
         role: 'agent',
       })));
     }
-    const external = Array.isArray(externalAgentsRes) ? externalAgentsRes as ExternalAgent[] : [];
-    const admin = external.find((a) =>
-      ['админ', 'admin', 'administrator'].includes(a.name.trim().toLowerCase()),
-    );
-    setAdminAgent(admin || null);
+    setAdminAgent(externalAgentsRes);
     setLoading(false);
   }, []);
 

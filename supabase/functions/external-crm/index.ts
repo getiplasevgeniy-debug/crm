@@ -509,15 +509,16 @@ async function analytics(body: Record<string, unknown>) {
   return buildAnalytics(leads, true);
 }
 
-function isAdminAgentName(name: string | undefined | null): boolean {
-  if (!name) return false;
-  return ['админ', 'admin', 'administrator'].includes(name.trim().toLowerCase());
+function isAdminAgent(agent: { name?: string; role?: string }): boolean {
+  const name = agent.name?.trim().toLowerCase();
+  const role = agent.role?.trim().toLowerCase();
+  return role === 'admin' || role === 'administrator' || name === 'админ' || name === 'admin' || name === 'администратор' || name === 'administrator';
 }
 
 async function getAdminAgent() {
   requireConfiguration();
   const agents = await callCrmData({ op: 'select', table: 'agents', select: 'id,name,role,status' });
-  const adminAgent = (agents || []).find((a: { name?: string }) => isAdminAgentName(a.name));
+  const adminAgent = (agents || []).find((a: { name?: string; role?: string }) => isAdminAgent(a));
   if (!adminAgent || typeof adminAgent.id !== 'string') {
     throw new Error('Во второй CRM не найден агент-администратор для передачи на админку');
   }
