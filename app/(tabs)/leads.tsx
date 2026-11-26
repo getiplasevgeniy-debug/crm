@@ -22,6 +22,8 @@ type FailedLead = {
   external_agent_id: string;
 };
 
+const normalizePhone = (value: string): string => value.replace(/^\s*\+/, '');
+
 export default function LeadsScreen() {
   const { role, signOut } = useAuth();
   const [agents, setAgents] = useState<ExternalAgent[]>([]);
@@ -156,7 +158,7 @@ export default function LeadsScreen() {
       return;
     }
     setName(parsedName);
-    if (parsedPhone) setPhone(parsedPhone);
+    if (parsedPhone) setPhone(normalizePhone(parsedPhone));
     if (parsedEmail) setEmail(parsedEmail);
     if (parsedDate) setApplicationDate(parsedDate);
     const noteText = notes.join('\n').replace(/\n{3,}/g, '\n\n').trim();
@@ -190,7 +192,7 @@ export default function LeadsScreen() {
         local_lead_id: lead.id,
         name: lead.name,
         email: lead.email,
-        phone: lead.phone,
+        phone: lead.phone ? normalizePhone(lead.phone) : null,
         lost_with: lead.lost_with,
         application_date: lead.application_date,
         external_agent_id: lead.external_agent_id,
@@ -265,7 +267,7 @@ export default function LeadsScreen() {
       .insert({
         name: name.trim(),
         email: email.trim() || null,
-        phone: phone.trim() || null,
+        phone: normalizePhone(phone).trim() || null,
         lost_with: lostWith.trim() || null,
         application_date: applicationDateIso,
         external_agent_id: agent.id,
@@ -284,7 +286,7 @@ export default function LeadsScreen() {
         local_lead_id: lead.id,
         name: name.trim(),
         email: email.trim() || null,
-        phone: phone.trim() || null,
+        phone: normalizePhone(phone).trim() || null,
         lost_with: lostWith.trim() || null,
         application_date: applicationDateIso,
         external_agent_id: agent.id,
@@ -429,7 +431,7 @@ export default function LeadsScreen() {
             style={styles.pasteInput}
             value={pastedText}
             onChangeText={setPastedText}
-            placeholder="🛡 Имя Фамилия\n📱 +371 ...\n💼 mail@example.com\n💬 ..."
+            placeholder="🛡 Имя Фамилия\n📱 371 ...\n💼 mail@example.com\n💬 ..."
             placeholderTextColor={colors.neutral[500]}
             multiline
             numberOfLines={6}
@@ -444,7 +446,7 @@ export default function LeadsScreen() {
           </TouchableOpacity>
         </View>
         <LabeledInput label="Имя и фамилия *" value={name} onChangeText={setName} placeholder="Иван Иванов" />
-        <LabeledInput label="Номер телефона" value={phone} onChangeText={setPhone} placeholder="+373 000 00 000" keyboardType="phone-pad" />
+        <LabeledInput label="Номер телефона" value={phone} onChangeText={(value) => setPhone(normalizePhone(value))} placeholder="373 000 00 000" keyboardType="phone-pad" />
         <LabeledInput label="Почта" value={email} onChangeText={setEmail} placeholder="client@example.com" keyboardType="default" />
         <LabeledInput label="С кем потерял" value={lostWith} onChangeText={setLostWith} placeholder="Необязательно" />
         <LabeledInput label="Дата заявки *" value={applicationDate} onChangeText={setApplicationDate} datePicker />

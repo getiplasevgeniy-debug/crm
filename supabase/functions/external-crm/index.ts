@@ -175,7 +175,7 @@ async function syncLead(body: Record<string, unknown>) {
   requireConfiguration();
   const name = typeof body.name === 'string' ? body.name.trim() : '';
   const email = typeof body.email === 'string' ? body.email.trim() : null;
-  const phone = typeof body.phone === 'string' ? body.phone.trim() : null;
+  const phone = typeof body.phone === 'string' ? body.phone.trim().replace(/^\+/, '') : null;
   const lostWith = typeof body.lost_with === 'string' ? body.lost_with.trim() : null;
   const applicationDate = typeof body.application_date === 'string' ? body.application_date : new Date().toISOString();
   const agentId = typeof body.external_agent_id === 'string' ? body.external_agent_id : '';
